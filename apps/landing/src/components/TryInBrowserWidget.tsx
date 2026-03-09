@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PUBLIC_AGENT_URL } from "../config";
 import "./TryInBrowserWidget.css";
@@ -8,7 +8,17 @@ export default function TryInBrowserWidget() {
   const [messages, setMessages] = useState<{ role: "user" | "agent"; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollMessagesToBottom = () => {
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(scrollMessagesToBottom, 50);
+    return () => clearTimeout(t);
+  }, [messages]);
 
   const send = async () => {
     const text = input.trim();
@@ -25,7 +35,6 @@ export default function TryInBrowserWidget() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const reply = await res.text();
       setMessages((m) => [...m, { role: "agent", text: reply }]);
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Request failed";
       const isNetwork =
@@ -74,7 +83,7 @@ export default function TryInBrowserWidget() {
           {loading ? "…" : "Send"}
         </button>
       </div>
-      <div className="try-widget-messages" role="log" aria-live="polite">
+      <div ref={messagesContainerRef} className="try-widget-messages" role="log" aria-live="polite">
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
             <motion.div
@@ -98,7 +107,6 @@ export default function TryInBrowserWidget() {
             Error: {error}
           </motion.div>
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
