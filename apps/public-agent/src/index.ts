@@ -10,7 +10,7 @@ import {
 } from "@a2a-js/sdk/server";
 import { A2AExpressApp } from "@a2a-js/sdk/server/express";
 
-const PORT = 3010;
+const PORT = Number(process.env.PORT) || 3010;
 const BASE_URL = process.env.PUBLIC_AGENT_URL ?? `http://localhost:${PORT}`;
 
 function extractText(message: Message): string {

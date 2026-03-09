@@ -13,7 +13,8 @@
     "typecheck": "turbo run typecheck",
     "services": "pnpm --filter @agentfi/internal-demo run services",
     "playground": "pnpm --filter @agentfi/internal-demo run playground",
-    "public:agent": "pnpm --filter @agentfi/public-agent run start"
+    "public:agent": "pnpm --filter @agentfi/public-agent run start",
+    "landing": "pnpm --filter @agentfi/landing run dev"
   },
   "devDependencies": {
     "turbo": "^2.3.0"

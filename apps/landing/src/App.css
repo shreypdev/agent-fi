@@ -1,0 +1,81 @@
+.landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.landing h1 {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  font-weight: 700;
+  margin: 0 0 1rem;
+  max-width: 20ch;
+}
+
+.landing .teaser {
+  color: #64748b;
+  max-width: 42ch;
+  margin: 0 0 2rem;
+}
+
+.landing .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.landing a {
+  color: #0ea5e9;
+  text-decoration: none;
+}
+
+.landing a:hover {
+  text-decoration: underline;
+}
+
+.landing .btn {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  background: #0ea5e9;
+  color: white;
+  border-radius: 0.375rem;
+  font-weight: 500;
+}
+
+.landing .btn:hover {
+  background: #0284c7;
+  text-decoration: none;
+}
+
+.landing .waitlist {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.landing .waitlist input {
+  padding: 0.5rem 0.75rem;
+  margin-right: 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+  font-size: 1rem;
+}
+
+.landing .waitlist button {
+  padding: 0.5rem 1rem;
+  background: #334155;
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.landing .waitlist button:hover {
+  background: #1e293b;
+}
