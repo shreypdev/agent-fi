@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import "./IntroOverlay.css";
 
-const INTRO_DURATION_MS = 3800;
-
 type Props = {
   onComplete: () => void;
 };

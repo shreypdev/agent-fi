@@ -71,7 +71,18 @@ function HighlightedTerminalCode({ snippet }: { snippet: string }) {
 
 const mcpManifestUrl = `${PUBLIC_AGENT_URL}/.well-known/mcp.json`;
 
-const platformCards = [
+type PlatformCard = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  external: boolean;
+  copy: string | null;
+  logo: string;
+  logoBg?: "white" | "transparent";
+};
+
+const platformCards: PlatformCard[] = [
   {
     id: "cursor",
     title: "Add to Cursor",
