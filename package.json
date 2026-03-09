@@ -1,0 +1,28 @@
+{
+  "name": "agentfi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentFi — governance layer for the agent economy",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "services": "pnpm --filter @agentfi/internal-demo run services",
+    "playground": "pnpm --filter @agentfi/internal-demo run playground",
+    "public:agent": "pnpm --filter @agentfi/public-agent run start"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "packageManager": "pnpm@9.14.2",
+  "engines": {
+    "node": ">=18"
+  },
+  "volta": {
+    "node": "18"
+  }
+}

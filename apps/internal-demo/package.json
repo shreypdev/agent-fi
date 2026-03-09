@@ -1,11 +1,13 @@
 {
-  "name": "a2a-travel-demo",
+  "name": "@agentfi/internal-demo",
   "version": "1.0.0",
-  "description": "A2A Agent-to-Agent travel itinerary demo — no LLM required",
+  "description": "Internal A2A travel agents testbed — no LLM required",
   "type": "module",
   "scripts": {
+    "build": "tsc",
     "services": "tsx src/start-services.ts",
-    "cli": "tsx src/personal-agent.ts"
+    "cli": "tsx src/personal-agent.ts",
+    "playground": "tsx src/playground.ts"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.10",

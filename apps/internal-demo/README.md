@@ -27,28 +27,32 @@ All agents communicate exclusively over the **A2A protocol** (JSON-RPC 2.0 over 
 
 ## Setup
 
+From repo root (monorepo):
+
 ```bash
-cd agent-demo
+npm install
+cd apps/internal-demo && npm install
+```
+
+Or from this package:
+
+```bash
+cd apps/internal-demo
 npm install
 ```
 
 ## Running the Demo
 
-Open two terminals:
-
-**Terminal 1 — Start all service agents:**
+**Option A — One command (recommended):** From repo root, run the playground. It starts all travel agents and the personal-agent CLI in one session; agent logs are prefixed with `[agents]`, you type at `You >`:
 
 ```bash
-npm run services
+npm run playground
 ```
 
-You should see all four agents start up on ports 3001–3004.
+**Option B — Two terminals:** Start agents, then the CLI:
 
-**Terminal 2 — Start your personal agent CLI:**
-
-```bash
-npm run cli
-```
+- **Terminal 1** (from root or this directory): `npm run services`
+- **Terminal 2:** `cd apps/internal-demo && npm run cli`
 
 Then type a travel planning request:
 
@@ -66,6 +70,12 @@ Your PersonalAgent forwards the request to TravelPlannerAgent, which fans out A2
 ## Supported Cities
 
 Rome, Florence, Venice, Milan
+
+## Running alongside the public agent
+
+The **public agent** (echo agent on port 3010) is in `apps/public-agent`. From root: `npm run public:agent` to start it (e.g. for hosting or ngrok). You can run the playground in one terminal and the public agent in another.
+
+See the root [README](../../README.md) and [TODO.md](../../TODO.md) for the full roadmap.
 
 ## What This Demonstrates
 
