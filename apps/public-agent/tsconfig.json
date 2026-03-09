@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@modelcontextprotocol/sdk/server/mcp": ["node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.d.ts"],
+      "@modelcontextprotocol/sdk/server/streamableHttp": ["node_modules/@modelcontextprotocol/sdk/dist/esm/server/streamableHttp.d.ts"]
+    },
     "esModuleInterop": true,
     "strict": true,
     "outDir": "dist",
