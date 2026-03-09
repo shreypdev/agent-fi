@@ -1,0 +1,85 @@
+.connect-card {
+  display: block;
+  padding: var(--space-24);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--motion-quick), box-shadow var(--motion-quick), transform var(--motion-quick);
+}
+
+.connect-card-logo {
+  margin-bottom: var(--space-12);
+}
+
+.connect-card-logo img {
+  display: block;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.connect-card-logo-bg-white {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.connect-card-logo-bg-white img {
+  width: 100%;
+  height: 100%;
+}
+
+.connect-card:hover {
+  border-color: rgba(34, 211, 238, 0.3);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.1);
+  transform: translateY(-2px);
+}
+
+.connect-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.connect-card-static {
+  cursor: default;
+}
+
+.connect-card-static:hover {
+  transform: none;
+}
+
+.connect-card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-8);
+  color: var(--text);
+}
+
+.connect-card-desc {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.connect-card-copy {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin: var(--space-8) 0 0;
+  opacity: 0.9;
+}
+
+.connect-card-arrow {
+  display: inline-block;
+  margin-top: var(--space-12);
+  color: var(--accent);
+  font-size: 1.25rem;
+}

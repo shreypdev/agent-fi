@@ -38,3 +38,11 @@ To get a stable HTTPS URL for ChatGPT, Claude, or Cursor:
    Or use a reserved ngrok domain and set `PUBLIC_AGENT_URL` in your environment.
 
 **Done when:** `curl https://<url>/api/chat?message=Hello` returns the echo response, and `curl https://<url>/.well-known/agent-card.json` returns the agent card.
+
+## Railway
+
+When deployed on Railway, set this variable so the Agent Card and OpenAPI spec use the public URL:
+
+- **Variables** (Public Agent service): `PUBLIC_AGENT_URL` = `https://pronox-public-agent.up.railway.app` (or your custom domain later).
+
+Then redeploy. The app already reads `process.env.PORT` and `process.env.PUBLIC_AGENT_URL`.

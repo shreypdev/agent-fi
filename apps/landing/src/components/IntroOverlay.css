@@ -1,0 +1,161 @@
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  pointer-events: auto;
+}
+
+.intro-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(34, 211, 238, 0.12) 0%, transparent 55%);
+  pointer-events: none;
+}
+
+.intro-content {
+  position: relative;
+  text-align: center;
+  padding: var(--space-24);
+  max-width: 420px;
+}
+
+.intro-title {
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 var(--space-16);
+  line-height: 1.1;
+  background: linear-gradient(135deg, var(--text) 0%, var(--text) 60%, var(--accent) 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.intro-sub {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-40);
+  min-height: 1.5em;
+  transition: opacity 0.3s ease;
+}
+
+.intro-visual {
+  margin-bottom: var(--space-40);
+}
+
+.intro-svg {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  margin: 0 auto;
+  display: block;
+}
+
+.intro-line {
+  stroke-width: 2;
+  stroke-dasharray: 4 6;
+  opacity: 0.6;
+  animation: introLinePulse 2s ease-in-out infinite;
+}
+
+@keyframes introLinePulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+.intro-node {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+.intro-node-a {
+  animation: introNodePulse 1.5s ease-in-out infinite;
+}
+
+.intro-node-b {
+  animation: introNodePulse 1.5s ease-in-out infinite 0.3s;
+}
+
+@keyframes introNodePulse {
+  0%, 100% { opacity: 0.7; stroke-width: 2; }
+  50% { opacity: 1; stroke-width: 2.5; }
+}
+
+.intro-message {
+  fill: var(--accent);
+}
+
+.intro-message-2 {
+  fill: var(--accent-hover);
+}
+
+.intro-labels {
+  display: flex;
+  justify-content: space-between;
+  max-width: 360px;
+  margin: var(--space-12) auto 0;
+  padding: 0 var(--space-8);
+}
+
+.intro-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+
+.intro-progress-wrap {
+  margin-bottom: var(--space-24);
+}
+
+.intro-progress-bar {
+  height: 3px;
+  background: var(--surface);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.intro-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  border-radius: 9999px;
+}
+
+.intro-skip {
+  padding: 12px 28px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: color var(--motion-quick), border-color var(--motion-quick), background var(--motion-quick);
+}
+
+.intro-skip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+}
+
+.intro-skip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-line,
+  .intro-node-a,
+  .intro-node-b {
+    animation: none;
+  }
+}

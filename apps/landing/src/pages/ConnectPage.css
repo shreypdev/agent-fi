@@ -1,0 +1,206 @@
+.connect-page {
+  padding-top: 100px;
+}
+
+.connect-hero {
+  text-align: center;
+  padding-bottom: var(--space-48);
+}
+
+.connect-title {
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 600;
+  margin: 0 0 var(--space-16);
+  color: var(--text);
+  max-width: 28ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.connect-sub {
+  color: var(--text-muted);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.connect-cards-wrap {
+  padding-top: 0;
+}
+
+.connect-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-24);
+}
+
+.connect-widget-card {
+  min-width: 0;
+}
+
+.connect-snippets {
+  padding-top: var(--space-64);
+  padding-bottom: var(--space-96);
+}
+
+.connect-snippets .section-heading {
+  margin-bottom: var(--space-24);
+}
+
+/* Terminal window: looks like a real CLI */
+.terminal-window {
+  margin-bottom: var(--space-32);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.terminal-window:last-child {
+  margin-bottom: 0;
+}
+
+.terminal-titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: 8px 14px 8px 16px;
+  background: #2d2d2d;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.terminal-dot-red {
+  background: #ff5f57;
+}
+
+.terminal-dot-yellow {
+  background: #febc2e;
+}
+
+.terminal-dot-green {
+  background: #28c840;
+}
+
+.terminal-title {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  font-family: system-ui, sans-serif;
+}
+
+.terminal-copy {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background var(--motion-quick), color var(--motion-quick);
+}
+
+.terminal-copy:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.terminal-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.terminal-code {
+  margin: 0;
+  padding: var(--space-16) var(--space-20);
+  background: #0d1117;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e6edf3;
+  min-height: 52px;
+}
+
+.terminal-prompt {
+  color: #3fb950;
+  user-select: none;
+}
+
+/* Starship-like syntax highlighting */
+.terminal-code .term-command {
+  color: #7ee787;
+}
+
+.terminal-code .term-flag {
+  color: #79c0ff;
+}
+
+.terminal-code .term-string {
+  color: #d29922;
+}
+
+.terminal-code .term-url {
+  color: #58a6ff;
+}
+
+.terminal-code .term-default {
+  color: #e6edf3;
+}
+
+.terminal-code::-webkit-scrollbar {
+  height: 8px;
+}
+
+.terminal-code::-webkit-scrollbar-track {
+  background: #161b22;
+  border-radius: 4px;
+}
+
+.terminal-code::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .connect-page {
+    padding-top: 88px;
+  }
+  .connect-hero {
+    padding-bottom: var(--space-32);
+  }
+  .connect-title {
+    font-size: clamp(1.25rem, 4vw, 1.5rem);
+  }
+  .connect-cards {
+    grid-template-columns: 1fr;
+  }
+  .connect-snippets {
+    padding-top: var(--space-48);
+    padding-bottom: var(--space-64);
+  }
+}
+
+@media (max-width: 480px) {
+  .connect-cards {
+    gap: var(--space-16);
+  }
+  .terminal-code {
+    font-size: 0.75rem;
+    padding: var(--space-12) var(--space-16);
+  }
+}

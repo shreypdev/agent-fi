@@ -1,0 +1,120 @@
+.roadmap-section {
+  padding-top: var(--space-64);
+  padding-bottom: var(--space-64);
+}
+
+.roadmap-heading {
+  text-align: center;
+}
+
+.roadmap-sub {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.roadmap-progress-wrap {
+  margin-bottom: var(--space-40);
+}
+
+.roadmap-progress-bar {
+  height: 10px;
+  background: var(--surface);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: var(--space-12);
+  border: 1px solid var(--border);
+}
+
+.roadmap-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+  border-radius: 9999px;
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+}
+
+.roadmap-progress-label {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.roadmap-timeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-24);
+}
+
+.roadmap-week-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-24);
+  transition: border-color var(--motion-quick), box-shadow var(--motion-quick);
+}
+
+.roadmap-week-card:hover {
+  border-color: rgba(34, 211, 238, 0.2);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.roadmap-week-label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--space-16);
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--border);
+}
+
+.roadmap-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.roadmap-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-6) 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.roadmap-item.done {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.roadmap-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 211, 238, 0.2);
+  color: var(--accent);
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.roadmap-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+@media (max-width: 640px) {
+  .roadmap-timeline {
+    grid-template-columns: 1fr;
+  }
+  .roadmap-section {
+    padding-top: var(--space-48);
+    padding-bottom: var(--space-48);
+  }
+}
