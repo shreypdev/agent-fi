@@ -8,6 +8,8 @@ interface ConnectCardProps {
   copyText?: string | null;
   logo?: string;
   logoBg?: "white" | "transparent";
+  /** When set, card is a button that runs this instead of linking. Use for copy-to-clipboard flows. */
+  onClick?: () => void;
 }
 
 export default function ConnectCard({
@@ -18,6 +20,7 @@ export default function ConnectCard({
   copyText,
   logo,
   logoBg,
+  onClick,
 }: ConnectCardProps) {
   const content = (
     <>
@@ -33,6 +36,15 @@ export default function ConnectCard({
       {copyText && <p className="connect-card-copy">{copyText}</p>}
     </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" className="connect-card" onClick={onClick}>
+        {content}
+        <span className="connect-card-arrow" aria-hidden>→</span>
+      </button>
+    );
+  }
 
   if (href) {
     return (

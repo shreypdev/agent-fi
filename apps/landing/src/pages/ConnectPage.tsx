@@ -71,6 +71,16 @@ function HighlightedTerminalCode({ snippet }: { snippet: string }) {
 
 const mcpManifestUrl = `${PUBLIC_AGENT_URL}/.well-known/mcp.json`;
 
+/** Cursor MCP install deep link so "Add to Cursor" opens Cursor and prompts to add the server. */
+function buildCursorMcpInstallLink(): string {
+  const name = "Pronox";
+  const config = { url: `${PUBLIC_AGENT_URL}/mcp` };
+  const configB64 = typeof btoa !== "undefined" ? btoa(JSON.stringify(config)) : "";
+  return `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(name)}&config=${encodeURIComponent(configB64)}`;
+}
+
+const cursorInstallHref = buildCursorMcpInstallLink();
+
 type PlatformCard = {
   id: string;
   title: string;
@@ -87,9 +97,9 @@ const platformCards: PlatformCard[] = [
     id: "cursor",
     title: "Add to Cursor",
     description: "Use the Pronox agent from Cursor via MCP.",
-    href: mcpManifestUrl,
+    href: cursorInstallHref,
     external: true,
-    copy: "Add as remote MCP server in Cursor settings (MCP → Add server → URL).",
+    copy: "Opens Cursor to add this MCP server in one click.",
     logo: "https://images.seeklogo.com/logo-png/61/1/cursor-logo-png_seeklogo-611587.png",
   },
   {
@@ -98,7 +108,7 @@ const platformCards: PlatformCard[] = [
     description: "Install the MCP server in Claude Desktop.",
     href: mcpManifestUrl,
     external: true,
-    copy: "Add this URL as a remote MCP server in Claude Desktop settings.",
+    copy: "Click to copy config — paste in Claude Desktop: Settings → Developer → Edit Config.",
     logo: "https://upload.wikimedia.org/wikipedia/commons/b/b0/Claude_AI_symbol.svg",
   },
   {
@@ -144,6 +154,14 @@ export default function ConnectPage() {
     }
   }, []);
 
+  /** Claude Desktop has no install URL scheme; copy config snippet so user can paste in Edit Config. */
+  const handleAddToClaude = useCallback(async () => {
+    const snippet = `"pronox": {
+  "url": "${PUBLIC_AGENT_URL}/mcp"
+}`;
+    await copyToClipboard(snippet, "claude");
+  }, [copyToClipboard]);
+
   return (
     <motion.main
       className="page connect-page"
@@ -182,11 +200,12 @@ export default function ConnectPage() {
               <ConnectCard
                 title={card.title}
                 description={card.description}
-                href={card.href}
+                href={card.id === "claude" ? undefined : card.href}
                 external={card.external}
-                copyText={card.copy}
+                copyText={card.id === "claude" && copiedId === "claude" ? "Copied! Paste in Settings → Developer → Edit Config." : card.copy}
                 logo={card.logo}
                 logoBg={card.logoBg}
+                onClick={card.id === "claude" ? handleAddToClaude : undefined}
               />
             </motion.div>
           ))}
