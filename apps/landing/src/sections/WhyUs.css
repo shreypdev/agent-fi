@@ -6,7 +6,7 @@
 .whyus-list {
   list-style: none;
   padding: 0;
-  margin: var(--space-24) 0 0;
+  margin: var(--space-24) auto 0;
   max-width: 56ch;
 }
 

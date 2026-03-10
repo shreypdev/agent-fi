@@ -37,13 +37,15 @@ main.page {
   font-weight: 600;
   margin: 0 0 var(--space-16);
   color: var(--text);
+  text-align: center;
 }
 
 .section-sub {
   color: var(--text-muted);
   font-size: 1rem;
-  margin: 0 0 var(--space-32);
+  margin: 0 auto var(--space-32);
   max-width: 56ch;
+  text-align: center;
 }
 
 .btn-primary {
