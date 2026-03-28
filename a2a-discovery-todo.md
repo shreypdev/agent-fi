@@ -17,9 +17,9 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 | Field | Value |
 |--------|--------|
-| **Current week** | Week ___ of 52 |
-| **Phase focus** | ☐ Phase 0 · ☐ Phase 1 · ☐ Phase 2 · ☐ Phase 3 |
-| **Last updated** | YYYY-MM-DD |
+| **Current week** | Week 2 of 52 |
+| **Phase focus** | ☑ Phase 0 · ☐ Phase 1 · ☐ Phase 2 · ☐ Phase 3 |
+| **Last updated** | 2026-03-28 |
 | **Owner / DRI** | |
 
 ---
@@ -85,11 +85,11 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 ### Week 2 — Ingest path
 
-- [ ] AgentBot v0.1: HTTP fetch → parse → persist one card URL
-- [ ] Parser: JSON schema validation, required fields, normalization rules
-- [ ] 50+ parser unit tests (valid / invalid / edge)
-- [ ] Frontier v0.1: enqueue, priority dequeue, dedup (10K URL stress test)
-- [ ] Integration test: mock `agent.json` → expected DB row
+- [x] AgentBot v0.1: HTTP fetch → parse → persist one card URL — [`crates/agentbot`](apps/agentrank/crates/agentbot), `agentbot ingest <url>`
+- [x] Parser: JSON schema validation, required fields, normalization rules — [`crates/card`](apps/agentrank/crates/card)
+- [x] 50+ parser unit tests (valid / invalid / edge) — `cargo test -p agentrank-card`
+- [x] Frontier v0.1: enqueue, priority dequeue, dedup (10K URL stress test) — [`crates/frontier`](apps/agentrank/crates/frontier)
+- [x] Integration test: mock `agent.json` → expected DB row — `crates/agentbot/tests/ingest_integration.rs`
 
 ### Week 3 — Search + API + UI
 

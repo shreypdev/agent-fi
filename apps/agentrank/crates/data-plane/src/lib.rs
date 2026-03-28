@@ -51,6 +51,16 @@ pub enum RedisCheckError {
 
 #[cfg(test)]
 mod tests {
+    use super::check_redis;
+
+    #[tokio::test]
+    async fn check_redis_dead_port_fails() {
+        let err = check_redis("redis://127.0.0.1:1")
+            .await
+            .expect_err("dead port should fail redis check");
+        let _ = format!("{err}");
+    }
+
     #[test]
     fn trust_tier_default_documented() {
         // Documented default for `trust_records.trust_tier` (see migrations).

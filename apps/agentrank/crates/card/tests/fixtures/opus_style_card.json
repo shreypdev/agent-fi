@@ -1,0 +1,36 @@
+{
+  "name": "FinancialAnalysisAgent",
+  "description": "Performs portfolio analysis, risk assessment, and market research using real-time data feeds.",
+  "version": "2.4.1",
+  "url": "https://agents.acmecorp.com/financial-analysis",
+  "provider": {
+    "organization": "AcmeCorp Financial Services",
+    "url": "https://acmecorp.com",
+    "contactEmail": "agents@acmecorp.com"
+  },
+  "authentication": {
+    "schemes": [
+      {
+        "scheme": "OAuth2",
+        "authorizationUrl": "https://auth.acmecorp.com/oauth2/authorize",
+        "tokenUrl": "https://auth.acmecorp.com/oauth2/token",
+        "scopes": ["financial:read", "portfolio:analyze"]
+      }
+    ]
+  },
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": true,
+    "stateTransitionHistory": true
+  },
+  "skills": [
+    {
+      "id": "portfolio-analysis",
+      "name": "Portfolio Risk Analysis",
+      "description": "Analyzes investment portfolio composition.",
+      "tags": ["finance", "portfolio"]
+    }
+  ],
+  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultOutputModes": ["text/plain", "application/json", "text/markdown"]
+}

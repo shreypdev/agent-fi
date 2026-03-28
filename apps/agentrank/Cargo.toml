@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/data-plane", "crates/healthd"]
+members = [
+    "crates/data-plane",
+    "crates/healthd",
+    "crates/card",
+    "crates/frontier",
+    "crates/agentbot",
+]
 
 [workspace.package]
 version = "0.1.0"

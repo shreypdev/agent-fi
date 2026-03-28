@@ -1,0 +1,14 @@
+[package]
+name = "agentrank-frontier"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Redis sorted-set URL frontier for AgentRank AgentBot"
+
+[dependencies]
+redis = { version = "0.27", features = ["tokio-comp"] }
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
