@@ -1,5 +1,20 @@
 node_modules/
+.turbo/
 dist/
 .env
 *.log
 .DS_Store
+
+# Rust (apps/agentrank)
+**/target/
+**/*.rs.bk
+
+# Python (apps/ml-pipeline)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/

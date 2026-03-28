@@ -1,0 +1,33 @@
+# Local data plane for AgentRank (Week 1). Dev-only credentials — do not use in production.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentrank
+      POSTGRES_PASSWORD: agentrank
+      POSTGRES_DB: agentrank
+    ports:
+      # Host 5433 avoids clashing with a local Postgres on 5432 (common on dev machines).
+      - "5433:5432"
+    volumes:
+      - agentrank_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentrank -d agentrank"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  agentrank_pg_data:

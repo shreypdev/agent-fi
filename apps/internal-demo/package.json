@@ -7,7 +7,9 @@
     "build": "tsc",
     "services": "tsx src/start-services.ts",
     "cli": "tsx src/personal-agent.ts",
-    "playground": "tsx src/playground.ts"
+    "playground": "tsx src/playground.ts",
+    "lint": "echo \"Lint not configured for internal-demo yet (Week 1)\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.10",
