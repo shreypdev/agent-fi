@@ -16,6 +16,19 @@ fn default_limit() -> u32 {
 
 pub const MAX_LIMIT: u32 = 50;
 
+#[derive(Debug, Deserialize)]
+pub struct HintsRequest {
+    pub url: String,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HintsResponse {
+    pub hint_id: String,
+    pub queued: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SearchResponse {
     pub results: Vec<SearchResultItem>,

@@ -11,6 +11,8 @@ members = [
     "crates/searchd",
     "crates/consoled",
     "crates/registry-connectors",
+    "crates/embed",
+    "crates/vector",
 ]
 
 [workspace.package]

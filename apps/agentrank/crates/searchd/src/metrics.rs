@@ -29,6 +29,10 @@ fn path_label(path: &str) -> &'static str {
         "/ready" => "/ready",
         "/metrics" => "/metrics",
         "/v1/search" => "/v1/search",
+        "/v1/hints" => "/v1/hints",
+        "/v1/a2a" => "/v1/a2a",
+        "/mcp" => "/mcp",
+        p if p.starts_with("/.well-known/") => "/.well-known/*",
         p if p.starts_with("/v1/agents/") => "/v1/agents/:id",
         _ => "other",
     }

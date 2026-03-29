@@ -3,6 +3,7 @@
 AgentRank splits responsibilities:
 
 - **`searchd`** serves `POST /v1/search` and **never** performs user-driven HTTP fetches. Callers supply queries only; there is no SSRF surface on the search API for arbitrary URLs. CI fails if `reqwest` / `ureq` appear under `crates/searchd/src` (see `.github/workflows/ci.yml`).
+- **`POST /v1/hints`** only **validates** the submitted URL (`validate_outbound_url`) and enqueues it on the Redis frontier — **no HTTP GET** from `searchd`. The crawl worker (`agentbot`) performs the actual fetch under the same policy as other ingests.
 - **`agentbot`** is the **only** production component that fetches third-party URLs (Agent Cards, `robots.txt`). All SSRF mitigations apply there.
 
 ## Rules enforced (`agentrank-crawl-policy`)

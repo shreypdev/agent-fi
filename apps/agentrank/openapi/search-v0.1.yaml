@@ -3,8 +3,9 @@ info:
   title: AgentRank Search API
   version: 0.1.0
   description: |
-    Week 3 lexical search over indexed agents (Tantivy BM25).
+    Search over indexed agents: Tantivy BM25, optional hybrid fusion with Qdrant vectors when `QDRANT_URL` is set.
     Rate limit: anonymous fixed window per client IP (see `Retry-After` on 429).
+    MCP: `POST /mcp`, `GET /.well-known/mcp.json`. A2A structured: `POST /v1/a2a`. Community hints: `POST /v1/hints`.
 servers:
   - url: http://localhost:8080
     description: Local searchd
@@ -84,6 +85,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorBody"
+  /v1/hints:
+    post:
+      summary: Community URL hint (enqueue only; no fetch from searchd)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                source:
+                  type: string
+      responses:
+        "200":
+          description: Hint accepted
+        "400":
+          description: Invalid or disallowed URL
+        "429":
+          description: Daily hint limit exceeded
+  /v1/a2a:
+    post:
+      summary: Structured A2A helper (skill-based; NL not supported)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                skill:
+                  type: string
+                  enum: [search_agents, get_agent_details]
+                query:
+                  type: string
+                limit:
+                  type: integer
+                agent_id:
+                  type: string
+                  format: uuid
   /v1/agents/{id}:
     get:
       summary: Agent detail (includes card_json)

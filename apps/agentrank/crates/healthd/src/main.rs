@@ -47,6 +47,23 @@ async fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
-    info!("postgres and redis healthy");
+    if let Ok(u) = std::env::var("QDRANT_URL") {
+        if !u.trim().is_empty() {
+            match agentrank_vector::connect().await {
+                Ok(client) => {
+                    if let Err(e) = agentrank_vector::health_check(&client).await {
+                        error!(error = %e, "Qdrant health check failed");
+                        return ExitCode::from(1);
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, "QDRANT_URL set but Qdrant unreachable");
+                    return ExitCode::from(1);
+                }
+            }
+        }
+    }
+
+    info!("postgres and redis healthy (and qdrant if QDRANT_URL set)");
     ExitCode::SUCCESS
 }

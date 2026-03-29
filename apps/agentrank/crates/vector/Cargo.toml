@@ -1,0 +1,13 @@
+[package]
+name = "agentrank-vector"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Qdrant helpers for AgentRank agent vectors (gRPC)"
+
+[dependencies]
+anyhow = "1"
+qdrant-client = { version = "1.13", default-features = false, features = ["serde", "uuid"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+uuid = { version = "1", features = ["serde", "v4"] }

@@ -11,6 +11,19 @@ export function isSearchApiConfigured(): boolean {
   return searchApiBase().length > 0;
 }
 
+/** MCP Streamable HTTP URL on searchd (same origin as REST). */
+export function searchMcpUrl(): string {
+  const b = searchApiBase();
+  if (!b) return "";
+  return `${b}/mcp`;
+}
+
+export function searchMcpManifestUrl(): string {
+  const b = searchApiBase();
+  if (!b) return "";
+  return `${b}/.well-known/mcp.json`;
+}
+
 export type SearchResultItem = {
   agent_id: string;
   name: string;

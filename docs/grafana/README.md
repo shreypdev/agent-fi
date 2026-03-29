@@ -21,3 +21,9 @@ In Grafana Alerting (or Alertmanager), add a rule on Prometheus:
 - **Notify:** Slack / PagerDuty / email webhook — document the webhook URL in your internal runbook (not committed).
 
 Railway: scrape `searchd` `/metrics` with `Authorization: Bearer $METRICS_BEARER_TOKEN` when set. AgentBot metrics require `AGENTBOT_METRICS_BIND` and a reachable scrape target.
+
+## Index freshness (Week 6+)
+
+- **`agentrank_index_lag_seconds`** (histogram) — seconds between `agents.updated_at` and successful Qdrant + Tantivy upsert after ingest.
+- **Alert:** if **P95 > 15 minutes** for 1h, page ops (see `a2a-discovery-todo.md` index freshness SLO).
+- **`agentrank_index_upsert_failures_total`** — failed upserts (see `index_jobs` table for retries).

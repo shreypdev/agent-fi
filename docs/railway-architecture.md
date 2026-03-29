@@ -7,12 +7,14 @@ This repo is a **monorepo**. On Railway you run **separate services** (separate 
 | Service (Railway) | What it is | How others reach it |
 | ----------------- | ---------- | ------------------- |
 | **Landing** | React/Vite **static UI** (`apps/landing`) | Users’ browsers |
-| **searchd** | Same **`apps/agentrank` Docker image** as consoled/agentbot; `AGENTRANK_PROCESS=searchd` | Browser calls `VITE_SEARCH_API_BASE_URL`; other clients call `POST /v1/search` |
+| **searchd** | Same **`apps/agentrank` Docker image** as consoled/agentbot/healthd; `AGENTRANK_PROCESS=searchd` | Browser calls `VITE_SEARCH_API_BASE_URL`; other clients call `POST /v1/search` |
 | **Public agent** | Your **demo A2A agent** (`apps/public-agent`) | `VITE_PUBLIC_AGENT_URL`, widgets, MCP clients |
 | **Postgres** | Plugin | `DATABASE_URL` on **searchd** (and any job that migrates/ingests) |
 | **Redis** | Plugin or Upstash | `REDIS_URL` on **searchd** (and **agentbot** / crawl worker) |
+| **Qdrant** | Plugin or self-hosted | `QDRANT_URL` (gRPC, e.g. `http://host:6334`) on **searchd** and **agentbot** for hybrid vectors + embeddings |
 | **consoled** | Same Rust image; `AGENTRANK_PROCESS=consoled` | Operators; `CONSOLE_API_KEY`; CORS from Console UI origin |
 | **agentbot** | Same Rust image; `AGENTRANK_PROCESS=agentbot` | Crawl worker; `REDIS_URL` frontier; scale replicas |
+| **healthd** | Same Rust image; `AGENTRANK_PROCESS=healthd` | One-shot probe (Postgres + Redis + optional Qdrant); use **Railway Cron** or manual run — **not** an HTTP server |
 | **Console UI** | Docker [`apps/console`](../apps/console) + [`railway.toml`](../apps/console/railway.toml) | Build arg `VITE_CONSOLE_API_BASE` → public consoled URL |
 
 Search **UI** lives in **Landing** because it is HTML/JS. Search **data and ranking** live in **searchd** + Postgres + index. That split is normal: **frontend service** vs **API service**.
@@ -28,14 +30,15 @@ Search **UI** lives in **Landing** because it is HTML/JS. Search **data and rank
 
 The repository root does **not** use `package-lock.json` for the workspace (pnpm is canonical). A root `package-lock.json` caused Railpack to run **`npm ci`** against an unsynced lockfile; removing it and pinning **Dockerfile** in `railway.toml` avoids that failure mode.
 
-## searchd / consoled / agentbot (one image)
+## searchd / consoled / agentbot / healthd (one image)
 
-- **Root Directory:** repository **root** for all three.
+- **Root Directory:** repository **root** for all four.
 - **Config as code:** [`apps/agentrank/railway.toml`](../apps/agentrank/railway.toml) — `dockerfilePath = apps/agentrank/Dockerfile`
-- **Process selection:** set **`AGENTRANK_PROCESS`** to `searchd`, `consoled`, or `agentbot` (see [`apps/agentrank/RAILWAY.md`](../apps/agentrank/RAILWAY.md)).
-- **searchd env:** `DATABASE_URL`, `REDIS_URL`, `SEARCH_INDEX_PATH`, `PORT`, `CORS_ORIGINS`, **`CORS_REQUIRE_ORIGINS=1`** (prod), optional **`METRICS_BEARER_TOKEN`**, optional `SEARCHD_INDEX_BOOT=reuse` + volume.
+- **Process selection:** set **`AGENTRANK_PROCESS`** to `searchd`, `consoled`, `agentbot`, or `healthd` (see [`apps/agentrank/RAILWAY.md`](../apps/agentrank/RAILWAY.md)).
+- **searchd env:** `DATABASE_URL`, `REDIS_URL`, `SEARCH_INDEX_PATH`, `PORT`, `CORS_ORIGINS`, **`CORS_REQUIRE_ORIGINS=1`** (prod), optional **`METRICS_BEARER_TOKEN`**, optional `SEARCHD_INDEX_BOOT=reuse` + volume, **`QDRANT_URL`** (hybrid search), **`AGENTRANK_PUBLIC_URL`** (MCP / Agent Card URLs in `/.well-known`).
 - **consoled env:** `AGENTRANK_PROCESS=consoled`, `DATABASE_URL`, `CONSOLE_API_KEY`, `CONSOLE_CORS_ORIGIN`.
-- **agentbot env:** `AGENTRANK_PROCESS=agentbot`, `DATABASE_URL`, `REDIS_URL`, optional `AGENTBOT_BOOT_DISCOVER=1`, `AGENTBOT_METRICS_BIND`, `GITHUB_TOKEN`.
+- **agentbot env:** `AGENTRANK_PROCESS=agentbot`, `DATABASE_URL`, `REDIS_URL`, optional `AGENTBOT_BOOT_DISCOVER=1`, `AGENTBOT_METRICS_BIND`, `GITHUB_TOKEN`, **`SEARCH_INDEX_PATH`** (post-ingest Tantivy upsert), **`QDRANT_URL`**, **`AGENTBOT_DISCOVER_INTERVAL_SECS`**, optional `PULSEMCP_FEED_URL` / `MCPSO_FEED_URL` / `AGENTBOT_DISCOVER_HTTP_JSONS`.
+- **healthd env:** **`AGENTRANK_PROCESS=healthd`**, **`DATABASE_URL`**, **`REDIS_URL`**, optional **`QDRANT_URL`** (same gRPC URL as searchd if you want Qdrant in the probe). No `PORT` / HTTP — process exits **0** = healthy, **1** = failure.
 - **Probes (searchd):** `GET /ready` for readiness. **consoled:** `GET /health`.
 - **Landing → API:** `VITE_SEARCH_API_BASE_URL` = public **HTTPS** URL of searchd.
 

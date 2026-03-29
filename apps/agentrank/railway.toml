@@ -1,4 +1,4 @@
-# AgentRank Rust image — searchd | consoled | agentbot (same Dockerfile, set AGENTRANK_PROCESS).
+# AgentRank Rust image — searchd | consoled | agentbot | healthd (same Dockerfile, set AGENTRANK_PROCESS).
 # Service root directory = repository root `.`.
 # Create **three** Railway services from this file; only change Variables per service (see RAILWAY.md).
 

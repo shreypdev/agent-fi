@@ -1,22 +1,29 @@
 //! Frontier-driven crawl loop: robots.txt, per-host rate limits, ingest, metrics.
 
+use crate::card_expand;
+use crate::discover_scheduler;
 use crate::host_rate_limit::check_host_fetch_allowed;
+use crate::index_pipeline;
 use crate::metrics_srv;
+use crate::recrawl;
 use crate::{
     default_max_body_bytes, ingest_card_url_with_policy, IngestPolicy, AGENTBOT_USER_AGENT,
 };
 use agentrank_crawl_policy::{refresh_robots_for_url, RobotsCache};
 use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
 use metrics::{counter, gauge, histogram};
+use qdrant_client::Qdrant;
 use redis::aio::MultiplexedConnection;
 use reqwest::Client;
 use sqlx::PgPool;
 use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use url::Url;
 
 /// Runtime knobs for [`run_drain`] / [`run_loop`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CrawlRunConfig {
     pub policy: IngestPolicy,
     /// Max successful HTTP fetches per registrable host per second (Redis).
@@ -26,6 +33,12 @@ pub struct CrawlRunConfig {
     pub frontier_key: String,
     /// Optional metrics bind (e.g. `127.0.0.1:9093`). If set, [`run_loop`] serves `/metrics`.
     pub metrics_bind: Option<SocketAddr>,
+    /// Optional Qdrant gRPC client (shared in run-loop).
+    pub qdrant: Option<Arc<Qdrant>>,
+    /// Local Tantivy index path for post-ingest upsert (same as searchd when co-located).
+    pub search_index_path: Option<PathBuf>,
+    /// Seconds between scheduled discover ticks (0 = disabled).
+    pub discover_interval_secs: u64,
 }
 
 impl CrawlRunConfig {
@@ -51,6 +64,16 @@ impl CrawlRunConfig {
             .ok()
             .and_then(|s| s.parse().ok());
 
+        let search_index_path = std::env::var("SEARCH_INDEX_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty());
+
+        let discover_interval_secs = std::env::var("AGENTBOT_DISCOVER_INTERVAL_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3600);
+
         Self {
             policy: IngestPolicy::from_env(),
             host_max_per_sec,
@@ -58,6 +81,9 @@ impl CrawlRunConfig {
             robots_ttl_negative: robots_ttl_neg,
             frontier_key: DEFAULT_FRONTIER_KEY.to_string(),
             metrics_bind,
+            qdrant: None,
+            search_index_path,
+            discover_interval_secs,
         }
     }
 }
@@ -162,6 +188,24 @@ async fn process_one_url(
         Ok(out) => {
             tracing::info!(agent_id = %out.agent_id, %url, "ingest ok");
             counter!("agentbot_ingest_total", "result" => "ok").increment(1);
+            index_pipeline::index_agent_after_ingest(
+                pool,
+                out.agent_id,
+                cfg.search_index_path.as_deref(),
+                cfg.qdrant.as_ref(),
+            )
+            .await;
+            if let Err(e) =
+                card_expand::enqueue_card_links(pool, redis, frontier, out.agent_id, cfg.policy)
+                    .await
+            {
+                tracing::debug!(%url, "card expand: {e}");
+            }
+            if let Err(e) =
+                recrawl::schedule_recrawl(pool, redis, frontier, &url, &out.content_hash).await
+            {
+                tracing::debug!(%url, "recrawl schedule: {e}");
+            }
         }
         Err(e) => {
             tracing::warn!(%url, "ingest err: {e}");
@@ -214,7 +258,7 @@ pub async fn run_loop(
     pool: PgPool,
     client: Client,
     mut redis: MultiplexedConnection,
-    cfg: CrawlRunConfig,
+    mut cfg: CrawlRunConfig,
 ) -> anyhow::Result<()> {
     use tokio::signal::unix::{signal, SignalKind};
 
@@ -226,6 +270,29 @@ pub async fn run_loop(
             }
         });
     }
+
+    if let Ok(u) = std::env::var("QDRANT_URL") {
+        if !u.trim().is_empty() {
+            match agentrank_vector::connect().await {
+                Ok(q) => {
+                    if let Err(e) = agentrank_vector::ensure_agents_collection(
+                        &q,
+                        index_pipeline::embedding_dim(),
+                    )
+                    .await
+                    {
+                        tracing::warn!("qdrant ensure collection: {e}");
+                    } else {
+                        cfg.qdrant = Some(Arc::new(q));
+                    }
+                }
+                Err(e) => tracing::warn!("qdrant connect (agentbot): {e}"),
+            }
+        }
+    }
+
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_default();
+    discover_scheduler::spawn(redis_url.clone(), cfg.discover_interval_secs);
 
     let robots_cache = RobotsCache::new(cfg.robots_ttl_ok, cfg.robots_ttl_negative);
     let frontier = UrlFrontier::new(cfg.frontier_key.clone());

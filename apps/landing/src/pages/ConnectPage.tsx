@@ -1,6 +1,12 @@
 import { useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { PUBLIC_AGENT_URL } from "../config";
+import {
+  isSearchApiConfigured,
+  searchApiBase,
+  searchMcpManifestUrl,
+  searchMcpUrl,
+} from "../lib/searchApi";
 import TryInBrowserWidget from "../components/TryInBrowserWidget";
 import ConnectCard from "../components/ConnectCard";
 import "../App.css";
@@ -80,6 +86,17 @@ function buildCursorMcpInstallLink(): string {
 }
 
 const cursorInstallHref = buildCursorMcpInstallLink();
+
+/** Cursor deeplink for AgentRank searchd MCP (uses `VITE_SEARCH_API_BASE_URL`). */
+function buildAgentRankCursorMcpInstallLink(): string {
+  const base = searchApiBase();
+  if (!base) return "#";
+  const name = "AgentRank Search";
+  const config = { url: `${base}/mcp` };
+  const configB64 =
+    typeof btoa !== "undefined" ? btoa(JSON.stringify(config)) : "";
+  return `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent(name)}&config=${encodeURIComponent(configB64)}`;
+}
 
 type PlatformCard = {
   id: string;
@@ -187,6 +204,26 @@ export default function ConnectPage() {
           Pick your platform and start chatting. No SDK required.
         </motion.p>
       </section>
+
+      {isSearchApiConfigured() && (
+        <section className="section connect-hero" style={{ paddingTop: 0 }}>
+          <h2 className="section-heading">Add AgentRank search to your AI</h2>
+          <p className="connect-sub">
+            MCP Streamable HTTP: <code className="search-code">{searchMcpUrl()}</code>
+            {" · "}
+            Discovery: <code className="search-code">{searchMcpManifestUrl()}</code>
+          </p>
+          <p className="connect-sub">
+            <a
+              href={buildAgentRankCursorMcpInstallLink()}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Add AgentRank search to Cursor
+            </a>
+          </p>
+        </section>
+      )}
 
       <section className="section connect-cards-wrap">
         <div className="connect-cards">

@@ -1,8 +1,8 @@
 //! AgentBot CLI: ingest, enqueue, frontier drain / loop, discovery (Week 5).
 
 use agentrank_agentbot::{
-    default_max_body_bytes, github_discover, http_client, ingest_card_url_with_policy, run_drain,
-    run_loop, CrawlRunConfig, IngestPolicy,
+    default_max_body_bytes, github_discover, http_client, index_pipeline,
+    ingest_card_url_with_policy, run_drain, run_loop, CrawlRunConfig, IngestPolicy,
 };
 use agentrank_data_plane::{database_url, redis_url};
 use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
@@ -50,6 +50,8 @@ enum Command {
         #[command(subcommand)]
         sub: DiscoverCmd,
     },
+    /// Re-upsert all agents into Tantivy + Qdrant (repair / backfill; uses SEARCH_INDEX_PATH + QDRANT_URL).
+    IndexBackfill,
 }
 
 #[derive(Subcommand)]
@@ -243,6 +245,34 @@ async fn main() -> anyhow::Result<()> {
                     .increment(1);
                 }
             }
+        }
+        Command::IndexBackfill => {
+            let db = database_url().map_err(|e| anyhow::anyhow!("DATABASE_URL: {e}"))?;
+            let pool = PgPoolOptions::new().max_connections(5).connect(&db).await?;
+            let index_path = std::env::var("SEARCH_INDEX_PATH").ok().map(PathBuf::from);
+            let qdrant = match std::env::var("QDRANT_URL") {
+                Ok(ref u) if !u.trim().is_empty() => {
+                    let c = agentrank_vector::connect().await?;
+                    agentrank_vector::ensure_agents_collection(&c, index_pipeline::embedding_dim())
+                        .await?;
+                    Some(std::sync::Arc::new(c))
+                }
+                _ => None,
+            };
+            let ids: Vec<uuid::Uuid> =
+                sqlx::query_scalar("SELECT id FROM agents ORDER BY created_at ASC")
+                    .fetch_all(&pool)
+                    .await?;
+            for id in &ids {
+                index_pipeline::index_agent_after_ingest(
+                    &pool,
+                    *id,
+                    index_path.as_deref(),
+                    qdrant.as_ref(),
+                )
+                .await;
+            }
+            tracing::info!(n = ids.len(), "index-backfill complete");
         }
     }
     Ok(())

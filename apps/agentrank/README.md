@@ -6,6 +6,8 @@ Week 2 **ingest path**: Agent Card parser (`agentrank-card`), Redis frontier (`a
 
 Week 4 **crawl policy**: `agentrank-crawl-policy` (`robots.txt` parse/cache, outbound URL validation). **`searchd` does not fetch user URLs**; only **`agentbot`** egresses. See [`docs/security-fetch-policy.md`](../../docs/security-fetch-policy.md).
 
+**Week 6–7:** `QDRANT_URL` + `AGENTRANK_EMBEDDER` (default `hash`) for hybrid search; **`POST /v1/hints`** enqueues only; **`AGENTRANK_PUBLIC_URL`** for `/.well-known` MCP + Agent Card; MCP at **`POST /mcp`**, structured A2A at **`POST /v1/a2a`**. Details: [`docs/api/mcp-a2a-searchd.md`](../../docs/api/mcp-a2a-searchd.md).
+
 ## Toolchain
 
 Uses [rust-toolchain.toml](./rust-toolchain.toml) (pinned stable). Install via [rustup](https://rustup.rs/).
@@ -51,8 +53,10 @@ sqlx migrate run --source migrations
 | Data plane | `cargo test -p agentrank-data-plane` | Dead-port Redis test does not need a server; live check tests optional |
 | AgentBot integration | `cargo test -p agentrank-agentbot --test ingest_integration` | **`DATABASE_URL`** + migrations; uses local HTTP servers (no external network except DNS test below) |
 | Search index | `cargo test -p agentrank-search-index` | None (Tantivy temp dirs); golden + integration |
-| Search API | `cargo test -p agentrank-searchd` | **`DATABASE_URL`** + **`REDIS_URL`** + migrations (`live_search` tests) |
-| Full workspace | `cargo test --workspace` | **`DATABASE_URL`** + **`REDIS_URL`** for full coverage |
+| Search API | `cargo test -p agentrank-searchd` | **`DATABASE_URL`** + **`REDIS_URL`** + migrations (`live_search`); optional **`QDRANT_URL`** for [`hybrid_qdrant_e2e`](./crates/searchd/tests/hybrid_qdrant_e2e.rs) (BM25 + Qdrant RRF + MCP on hybrid path) |
+| Full workspace | `cargo test --workspace` | **`DATABASE_URL`** + **`REDIS_URL`** for full coverage; **GitHub Actions** also runs **Qdrant** (`QDRANT_URL=http://127.0.0.1:6334`) so hybrid E2E runs in CI |
+
+**Embeddings:** `AGENTRANK_EMBEDDER` defaults to deterministic **hash** vectors (768-d, L2-normalized)—good for CI and plumbing. Swap to **BGE / ONNX** (or an HTTP sidecar) later for production semantic quality without changing the hybrid **shape** (same `EMBEDDING_DIM`, Qdrant cosine).
 
 Integration tests cover: happy ingest, HTTP 404 / bad JSON / oversized body, **3-hop redirects**, **policy limit on redirects** (6 hops), **connection refused**, **HTTPS to plain-HTTP** (TLS failure class), **client timeout** vs slow server, **`.invalid` DNS failure**, **32 concurrent ingests** same `external_id` (single `agents` row, many `crawl_history` rows), re-ingest upsert.
 
@@ -85,14 +89,17 @@ sqlx database create
 
 ## `healthd`
 
-Probes PostgreSQL (`SELECT 1`) and Redis (`PING`). Exits `0` only if both succeed.
+Probes PostgreSQL (`SELECT 1`) and Redis (`PING`). If **`QDRANT_URL`** is set and non-empty, also checks Qdrant (gRPC). Exits **`0`** only if all configured checks succeed.
 
 ```bash
 cd apps/agentrank
 export DATABASE_URL=...
 export REDIS_URL=...
+# optional: export QDRANT_URL=http://127.0.0.1:6334
 cargo run -p agentrank-healthd --bin healthd
 ```
+
+**Railway:** same Docker image as searchd; set **`AGENTRANK_PROCESS=healthd`** plus `DATABASE_URL` / `REDIS_URL` (and optional `QDRANT_URL`). Use **Cron**, not an always-on web service — see [`RAILWAY.md`](./RAILWAY.md) §4.
 
 Logs: set `RUST_LOG=debug` for more detail.
 
@@ -122,6 +129,9 @@ cargo run -p agentrank-agentbot --bin agentbot -- drain --max 50
 # Long-running crawl (Unix; optional Prometheus on AGENTBOT_METRICS_BIND, e.g. 127.0.0.1:9093)
 export AGENTBOT_METRICS_BIND=127.0.0.1:9093
 cargo run -p agentrank-agentbot --bin agentbot -- run-loop
+
+# Re-upsert every row into Tantivy + Qdrant (repair; needs SEARCH_INDEX_PATH and optional QDRANT_URL)
+cargo run -p agentrank-agentbot --bin agentbot -- index-backfill
 ```
 
 Env (optional): `AGENTBOT_HOST_MAX_PER_SEC` (default `2`), `AGENTBOT_ROBOTS_TTL_OK_SECS`, `AGENTBOT_ROBOTS_TTL_NEGATIVE_SECS`, `AGENTBOT_METRICS_BIND`, `AGENTBOT_ALLOW_HTTP_LOCALHOST`, `AGENTBOT_ALLOW_LOOPBACK_HTTPS` (tests only).

@@ -11,8 +11,11 @@ case "${AGENTRANK_PROCESS:-searchd}" in
   agentbot)
     exec /entrypoint-agentbot.sh
     ;;
+  healthd)
+    exec /usr/local/bin/healthd
+    ;;
   *)
-    echo "AGENTRANK_PROCESS must be searchd, consoled, or agentbot (got: ${AGENTRANK_PROCESS})" >&2
+    echo "AGENTRANK_PROCESS must be searchd, consoled, agentbot, or healthd (got: ${AGENTRANK_PROCESS})" >&2
     exit 1
     ;;
 esac

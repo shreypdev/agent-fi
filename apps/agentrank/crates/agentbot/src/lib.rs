@@ -1,10 +1,14 @@
 //! Fetch `/.well-known/agent.json` (or any card URL), validate, and persist to PostgreSQL.
 
+mod card_expand;
 mod crawl_run;
+mod discover_scheduler;
 mod error;
 pub mod github_discover;
 mod host_rate_limit;
+pub mod index_pipeline;
 pub mod metrics_srv;
+mod recrawl;
 
 pub use crawl_run::{run_drain, run_loop, CrawlRunConfig};
 pub use error::IngestError;
@@ -70,6 +74,7 @@ pub struct IngestSuccess {
     pub agent_id: Uuid,
     pub external_id: String,
     pub crawl_history_id: i64,
+    pub content_hash: String,
 }
 
 /// Fetch one URL, parse Agent Card, upsert provider + agent, record crawl + trust.
@@ -250,6 +255,7 @@ pub async fn ingest_card_url_with_policy(
         agent_id,
         external_id: card.external_id,
         crawl_history_id,
+        content_hash: card.content_hash,
     })
 }
 

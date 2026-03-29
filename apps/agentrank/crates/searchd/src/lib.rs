@@ -1,10 +1,14 @@
 //! Axum search API: `POST /v1/search`, `GET /v1/agents/:id`, `GET /health`, `GET /ready`, `GET /metrics`.
 
+mod a2a;
 mod error;
+mod fusion;
 mod handlers;
+mod mcp;
 mod metrics;
 mod models;
 mod rate_limit;
+mod well_known;
 
 pub use error::{ApiError, ErrorBody};
 pub use handlers::AgentDetailResponse;
@@ -16,9 +20,11 @@ use axum::http::Method;
 use axum::middleware::from_fn;
 use axum::routing::{get, post};
 use axum::Router;
+use qdrant_client::Qdrant;
 use redis::aio::MultiplexedConnection;
 use sqlx::PgPool;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tantivy::{Index, IndexReader};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -36,6 +42,8 @@ pub struct AppState {
     pub index_path: PathBuf,
     /// When true, rate limiting uses `X-Forwarded-For` / `X-Real-IP` (trusted reverse proxy).
     pub trust_proxy_headers: bool,
+    /// When set, hybrid search uses Qdrant kNN + BM25 RRF fusion.
+    pub qdrant: Option<Arc<Qdrant>>,
 }
 
 /// When `CORS_REQUIRE_ORIGINS` is set, `CORS_ORIGINS` must list at least one valid origin
@@ -77,6 +85,12 @@ pub fn app_router(state: AppState, cors: CorsLayer) -> Router {
         .route("/ready", get(handlers::ready))
         .route("/metrics", get(metrics::prometheus))
         .route("/v1/search", post(handlers::search))
+        .route("/v1/hints", post(handlers::post_hints))
+        .route("/v1/a2a", post(a2a::a2a_send))
+        .route("/mcp", post(mcp::mcp_post).get(mcp::mcp_get))
+        .route("/.well-known/mcp.json", get(well_known::mcp_manifest))
+        .route("/.well-known/agent-card.json", get(well_known::agent_card))
+        .route("/.well-known/agent.json", get(well_known::agent_card))
         .route("/v1/agents/:id", get(handlers::get_agent))
         .layer(from_fn(metrics::http_metrics))
         .layer(TraceLayer::new_for_http())
@@ -107,6 +121,16 @@ pub async fn build_app(
     let (index, agent_schema) = open_index(index_path)?;
     let reader = index.reader()?;
 
+    let qdrant = match std::env::var("QDRANT_URL") {
+        Ok(ref u) if !u.trim().is_empty() => {
+            let c = agentrank_vector::connect().await?;
+            agentrank_vector::ensure_agents_collection(&c, agentrank_embed::EMBEDDING_DIM as u64)
+                .await?;
+            Some(Arc::new(c))
+        }
+        _ => None,
+    };
+
     let state = AppState {
         pool,
         redis,
@@ -117,6 +141,7 @@ pub async fn build_app(
         rate_limit_per_minute,
         index_path: index_path.to_path_buf(),
         trust_proxy_headers,
+        qdrant,
     };
     let cors = build_cors_layer()?;
     Ok(app_router(state, cors))

@@ -1,6 +1,6 @@
-# Railway — AgentRank (searchd, consoled, agentbot, console UI)
+# Railway — AgentRank (searchd, consoled, agentbot, healthd, console UI)
 
-All **Rust** services share **one Docker image** built from [`Dockerfile`](./Dockerfile). Railway **duplicates the service** three times with the same **root directory** (repo `.`) and the same **config as code** path [`railway.toml`](./railway.toml); only **environment variables** differ (`AGENTRANK_PROCESS`). No custom build commands or alternate build folders.
+All **Rust** services share **one Docker image** built from [`Dockerfile`](./Dockerfile). Railway **duplicates the service** per role with the same **root directory** (repo `.`) and the same **config as code** path [`railway.toml`](./railway.toml); only **environment variables** differ (`AGENTRANK_PROCESS`). No custom build commands or alternate build folders.
 
 **Console UI** is a **separate** Docker image ([`apps/console/Dockerfile`](../console/Dockerfile)) — same pattern as Landing (root + Dockerfile path in `railway.toml`).
 
@@ -12,8 +12,8 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
 
 | Plugin / service | Purpose |
 | ---------------- | ------- |
-| **Postgres** | `DATABASE_URL` for searchd, consoled, agentbot |
-| **Redis** | `REDIS_URL` for searchd + **agentbot frontier / rate limits** |
+| **Postgres** | `DATABASE_URL` for searchd, consoled, agentbot, optional **healthd** |
+| **Redis** | `REDIS_URL` for searchd + **agentbot frontier / rate limits** (+ **healthd** if used) |
 
 ---
 
@@ -29,6 +29,7 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
    - `CORS_ORIGINS` — include your **Landing** and **Console UI** public origins in prod.
    - `CORS_REQUIRE_ORIGINS=1` in prod.
    - Optional: `METRICS_BEARER_TOKEN`, `SEARCHD_INDEX_BOOT`, `TRUST_PROXY_HEADERS`, etc. (unchanged from before).
+   - Optional: **`SEARCH_API_KEY`** — **searchd only.** If set, requests to **`POST /v1/hints`** with `Authorization: Bearer <this value>` get a **higher daily hint cap** (50 vs 5 for anonymous). Other services (**consoled**, **agentbot**, **healthd**) do **not** use this variable.
 4. **Health check:** `GET /ready` (readiness).
 5. Deploy → copy **public HTTPS URL** → use as **`VITE_SEARCH_API_BASE_URL`** on Landing.
 
@@ -71,17 +72,35 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
 
 ---
 
-## 4. Console UI (`apps/console`)
+## 4. `healthd` (one-shot dependency probe — optional)
+
+`healthd` is **not** an HTTP server. It connects to Postgres and Redis, optionally Qdrant, then **exits** with code **0** (ok) or **1** (failure). Use it for **Railway Cron** (scheduled smoke), CI, or manual “are my deps up?” checks.
+
+1. **New service** → same repo → same `apps/agentrank/railway.toml`, root **`.`**.
+2. **Variables:**
+   - **`AGENTRANK_PROCESS=healthd`**
+   - **`DATABASE_URL`** — reference Postgres (same as searchd).
+   - **`REDIS_URL`** — reference Redis.
+   - Optional: **`QDRANT_URL`** — e.g. `http://qdrant:6334` on private networking; if set and non-empty, the probe **requires** Qdrant to answer. Omit if you do not run Qdrant.
+   - Optional: **`RUST_LOG=debug`** for verbose logs.
+3. **Deploy / Cron:** use **Railway Cron** (or a scheduled job) so the container runs on an interval; success = exit **0**. Do **not** treat it like a long-running web service — there is no `PORT` to probe.
+4. **No** `PORT`, `SEARCH_INDEX_PATH`, or CORS.
+
+For API readiness (index + optional Qdrant), prefer **searchd** `GET /ready`.
+
+---
+
+## 5. Console UI (`apps/console`)
 
 1. **New service** → same repo → **Config as code** → [`apps/console/railway.toml`](../console/railway.toml).
 2. **Root directory:** `.`
-3. **Build variable (Docker build arg):** add **`VITE_CONSOLE_API_BASE`** in Railway and mark it **available at build time** (same pattern as Landing’s `VITE_*`). Value = **public URL of consoled** (step 2), **no trailing slash**.
+3. **Build variable (Docker build arg):** add **`VITE_CONSOLE_API_BASE`** in Railway and mark it **available at build time** (same pattern as Landing’s `VITE_*`). Value = **public URL of consoled** (§2), **no trailing slash**.
 4. **No runtime env required** for API calls if the build arg was correct (Vite bakes the base URL).
 5. Deploy → operators open the Console URL → **Setup** → paste **`CONSOLE_API_KEY`**.
 
 ---
 
-## 5. Search index freshness after crawls
+## 6. Search index freshness after crawls
 
 `agentbot` **writes Postgres**; `searchd` serves **Tantivy** built from DB. New ingests **do not** appear in `POST /v1/search` until the index is rebuilt.
 
@@ -113,12 +132,13 @@ docker build -f apps/console/Dockerfile \
 | searchd | `apps/agentrank/railway.toml` | `searchd` (or omit) |
 | consoled | `apps/agentrank/railway.toml` | `consoled` |
 | agentbot | `apps/agentrank/railway.toml` | `agentbot` |
+| healthd (Cron / one-shot) | `apps/agentrank/railway.toml` | `healthd` |
 | Console UI | `apps/console/railway.toml` | — |
 | Landing | `apps/landing/railway.toml` | — |
 
 ## Cost / scale notes
 
-- **Three Rust services** = **three** always-on allocations (searchd + consoled + agentbot); agentbot replicas multiply cost linearly.
+- **Rust always-on:** searchd + consoled + agentbot (three allocations); agentbot replicas multiply cost linearly. **healthd** is usually **Cron-only** (short runs), not a fourth always-on server.
 - **Console UI** + **Landing** are static/nginx — usually cheap.
 - **Egress:** agentbot fetches the public web; keep `AGENTBOT_HOST_MAX_PER_SEC` conservative.
 
