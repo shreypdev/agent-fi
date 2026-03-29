@@ -1,8 +1,10 @@
+import { ensureAbsoluteHttpUrl } from "./absoluteHttpUrl";
+
 /** Base URL for searchd (no trailing slash). Empty if unset. */
 export function searchApiBase(): string {
   const raw = import.meta.env.VITE_SEARCH_API_BASE_URL;
   if (raw == null || String(raw).trim() === "") return "";
-  return String(raw).replace(/\/+$/, "");
+  return ensureAbsoluteHttpUrl(String(raw));
 }
 
 export function isSearchApiConfigured(): boolean {
