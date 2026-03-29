@@ -9,8 +9,10 @@ use crate::recrawl;
 use crate::{
     default_max_body_bytes, ingest_card_url_with_policy, IngestPolicy, AGENTBOT_USER_AGENT,
 };
-use agentrank_crawl_policy::{refresh_robots_for_url, RobotsCache};
-use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
+use agentrank_crawl_policy::{
+    merged_robots_allow, refresh_agent_robots_for_url, refresh_robots_for_url, RobotsCache,
+};
+use agentrank_frontier::{FrontierMeta, UrlFrontier, DEFAULT_FRONTIER_KEY};
 use metrics::{counter, gauge, histogram};
 use qdrant_client::Qdrant;
 use redis::aio::MultiplexedConnection;
@@ -111,7 +113,11 @@ async fn process_one_url(
     cfg: &CrawlRunConfig,
     url: String,
     score: f64,
+    frontier_meta: Option<FrontierMeta>,
 ) -> anyhow::Result<()> {
+    if let Some(ref m) = frontier_meta {
+        tracing::debug!(discovery_source = %m.discovery_source, confidence = ?m.confidence, %url, "frontier dequeue");
+    }
     let parsed = match Url::parse(&url) {
         Ok(u) => u,
         Err(e) => {
@@ -131,7 +137,7 @@ async fn process_one_url(
         return Ok(());
     }
 
-    let robots = match refresh_robots_for_url(
+    let site_robots = match refresh_robots_for_url(
         client,
         robots_cache,
         &parsed,
@@ -148,11 +154,33 @@ async fn process_one_url(
         }
     };
 
+    let agent_robots = match refresh_agent_robots_for_url(
+        client,
+        robots_cache,
+        &parsed,
+        cfg.policy.allow_http_localhost,
+        cfg.policy.allow_loopback_https,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(%url, "agent-robots fetch: {e}");
+            counter!("agentbot_robots_fetch_errors_total").increment(1);
+            return Ok(());
+        }
+    };
+
     let path = parsed.path();
     let path = if path.is_empty() { "/" } else { path };
-    if !robots.is_allowed(AGENTBOT_USER_AGENT, path) {
+    if !merged_robots_allow(&site_robots, &agent_robots, AGENTBOT_USER_AGENT, path) {
         tracing::info!(%url, "robots.txt disallows path");
-        record_robots_denied(pool, &url, "path disallowed by robots.txt").await;
+        record_robots_denied(
+            pool,
+            &url,
+            "path disallowed by robots.txt or agent-robots.txt",
+        )
+        .await;
         counter!("agentbot_ingest_total", "result" => "robots_denied").increment(1);
         counter!("agentbot_robots_denied_total").increment(1);
         return Ok(());
@@ -174,7 +202,7 @@ async fn process_one_url(
         return Ok(());
     }
 
-    if let Some(delay) = robots.crawl_delay_secs(AGENTBOT_USER_AGENT) {
+    if let Some(delay) = site_robots.crawl_delay_secs(AGENTBOT_USER_AGENT) {
         let ms = (delay * 1000.0) as u64;
         if ms > 0 && ms < 60_000 {
             tokio::time::sleep(Duration::from_millis(ms.min(10_000))).await;
@@ -188,6 +216,21 @@ async fn process_one_url(
         Ok(out) => {
             tracing::info!(agent_id = %out.agent_id, %url, "ingest ok");
             counter!("agentbot_ingest_total", "result" => "ok").increment(1);
+            if std::env::var("AGENTBOT_SITEMAP_POST_INGEST")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(true)
+            {
+                if let Err(e) = crate::sitemap_discovery::maybe_post_ingest_sitemap(
+                    client,
+                    redis,
+                    &out.primary_domain,
+                    &url,
+                )
+                .await
+                {
+                    tracing::debug!(%url, "sitemap post-ingest: {e}");
+                }
+            }
             index_pipeline::index_agent_after_ingest(
                 pool,
                 out.agent_id,
@@ -230,7 +273,7 @@ pub async fn run_drain(
     let frontier = UrlFrontier::new(cfg.frontier_key.clone());
     let mut done = 0u32;
     for _ in 0..max {
-        let Some((url, score)) = frontier.dequeue_highest(redis).await? else {
+        let Some((url, score, meta)) = frontier.dequeue_highest_with_meta(redis).await? else {
             break;
         };
         process_one_url(
@@ -242,6 +285,7 @@ pub async fn run_drain(
             cfg,
             url,
             score,
+            meta,
         )
         .await?;
         done += 1;
@@ -292,7 +336,11 @@ pub async fn run_loop(
     }
 
     let redis_url = std::env::var("REDIS_URL").unwrap_or_default();
-    discover_scheduler::spawn(redis_url.clone(), cfg.discover_interval_secs);
+    discover_scheduler::spawn(
+        redis_url.clone(),
+        cfg.discover_interval_secs,
+        std::env::var("DATABASE_URL").ok(),
+    );
 
     let robots_cache = RobotsCache::new(cfg.robots_ttl_ok, cfg.robots_ttl_negative);
     let frontier = UrlFrontier::new(cfg.frontier_key.clone());
@@ -313,7 +361,9 @@ pub async fn run_loop(
                 break;
             }
             r = async {
-                if let Some((url, score)) = frontier.dequeue_highest(&mut redis).await? {
+                if let Some((url, score, meta)) =
+                    frontier.dequeue_highest_with_meta(&mut redis).await?
+                {
                     process_one_url(
                         &pool,
                         &client,
@@ -323,6 +373,7 @@ pub async fn run_loop(
                         cfg.as_ref(),
                         url,
                         score,
+                        meta,
                     )
                     .await?;
                 } else {

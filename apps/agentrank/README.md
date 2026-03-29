@@ -8,6 +8,8 @@ Week 4 **crawl policy**: `agentrank-crawl-policy` (`robots.txt` parse/cache, out
 
 **Week 6–7:** `QDRANT_URL` + `AGENTRANK_EMBEDDER` (default `hash`) for hybrid search; **`POST /v1/hints`** enqueues only; **`AGENTRANK_PUBLIC_URL`** for `/.well-known` MCP + Agent Card; MCP at **`POST /mcp`**, structured A2A at **`POST /v1/a2a`**. Details: [`docs/api/mcp-a2a-searchd.md`](../../docs/api/mcp-a2a-searchd.md).
 
+**Week 8 — Crawler v2:** `agent-sitemap` crate + scheduled/post-ingest sitemap; domain probe (HEAD→GET; **§B**); **`/.well-known/agent-robots.txt`** merged with `robots.txt`; paginated registry connectors + `registry_sync_state`; cross-source dedup + `agent_aliases`. Runbooks: [`docs/runbooks/crawler-sitemap.md`](../../docs/runbooks/crawler-sitemap.md), [`crawler-domain-probe.md`](../../docs/runbooks/crawler-domain-probe.md), [`crawler-registry-api.md`](../../docs/runbooks/crawler-registry-api.md), [`crawler-robots.md`](../../docs/runbooks/crawler-robots.md).
+
 ## Toolchain
 
 Uses [rust-toolchain.toml](./rust-toolchain.toml) (pinned stable). Install via [rustup](https://rustup.rs/).

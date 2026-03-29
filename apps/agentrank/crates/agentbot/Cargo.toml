@@ -20,6 +20,7 @@ agentrank-data-plane = { path = "../data-plane" }
 agentrank-embed = { path = "../embed" }
 agentrank-frontier = { path = "../frontier" }
 agentrank-registry-connectors = { path = "../registry-connectors" }
+agentrank-sitemap = { path = "../agentrank-sitemap" }
 agentrank-search-index = { path = "../search-index" }
 agentrank-vector = { path = "../vector" }
 chrono = { version = "0.4", features = ["serde"] }
@@ -31,6 +32,7 @@ metrics-exporter-prometheus = "0.16"
 redis = { version = "0.27", features = ["tokio-comp"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 serde_json = "1"
+sha2 = "0.10"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "migrate", "json", "chrono"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }

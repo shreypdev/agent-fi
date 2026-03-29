@@ -1,6 +1,6 @@
 //! Track content hash and re-enqueue card URL at low priority for refresh.
 
-use agentrank_frontier::UrlFrontier;
+use agentrank_frontier::{FrontierMeta, UrlFrontier};
 use redis::aio::MultiplexedConnection;
 use sqlx::PgPool;
 
@@ -43,6 +43,7 @@ pub async fn schedule_recrawl(
     .execute(pool)
     .await?;
 
-    let _ = frontier.enqueue(redis, card_url, 0.15).await;
+    let m = FrontierMeta::new("recrawl_schedule");
+    let _ = frontier.enqueue_with_meta(redis, card_url, 0.15, &m).await;
     Ok(())
 }

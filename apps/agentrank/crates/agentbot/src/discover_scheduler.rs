@@ -1,13 +1,18 @@
 //! Periodic registry discover (Week 6) — builtin + optional HTTP JSON feeds from env.
 
+use crate::domain_probe;
 use crate::http_client;
-use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
+use crate::registry_sync;
+use crate::sitemap_discovery;
+use agentrank_frontier::{FrontierMeta, UrlFrontier, DEFAULT_FRONTIER_KEY};
 use agentrank_registry_connectors::{
     BuiltinDemoSeed, DiscoveredUrl, HttpJsonUrlFeed, RegistrySource,
 };
 use metrics::counter;
 use redis::aio::MultiplexedConnection;
 use reqwest::Client;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 
 fn env_http_feeds() -> Vec<String> {
     std::env::var("AGENTBOT_DISCOVER_HTTP_JSONS")
@@ -27,7 +32,11 @@ async fn enqueue_discovered(
     let f = UrlFrontier::new(DEFAULT_FRONTIER_KEY);
     let mut n = 0u32;
     for d in items {
-        f.enqueue(conn, &d.url, d.priority).await?;
+        let meta = FrontierMeta {
+            discovery_source: d.discovery_source.clone(),
+            confidence: d.confidence,
+        };
+        f.enqueue_with_meta(conn, &d.url, d.priority, &meta).await?;
         n += 1;
         counter!("registry_discovered_urls_total", "source" => source).increment(1);
     }
@@ -35,7 +44,11 @@ async fn enqueue_discovered(
     Ok(n)
 }
 
-async fn tick_once(http: &Client, conn: &mut MultiplexedConnection) -> anyhow::Result<()> {
+async fn tick_once(
+    http: &Client,
+    conn: &mut MultiplexedConnection,
+    pool: Option<&PgPool>,
+) -> anyhow::Result<()> {
     let src = BuiltinDemoSeed;
     let items = src.discover(http).await?;
     let n = enqueue_discovered(conn, src.source_name(), items).await?;
@@ -77,11 +90,47 @@ async fn tick_once(http: &Client, conn: &mut MultiplexedConnection) -> anyhow::R
             }
         }
     }
+
+    if let Some(pool) = pool {
+        if std::env::var("AGENTBOT_SITEMAP_SCHEDULED")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true)
+        {
+            match sitemap_discovery::scheduled_sitemap_tick(pool, http, conn).await {
+                Ok(n) => tracing::info!(n, "scheduled sitemap tick"),
+                Err(e) => tracing::warn!("sitemap scheduled: {e}"),
+            }
+        }
+        if std::env::var("AGENTBOT_REGISTRY_PAGINATION")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true)
+        {
+            if let Err(e) = registry_sync::run_paginated_registry_tick(pool, http, conn).await {
+                tracing::warn!("registry pagination: {e}");
+            }
+        }
+    }
+
+    if std::env::var("AGENTBOT_PROBE_SCHEDULED")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        let robots = agentrank_crawl_policy::RobotsCache::new(
+            std::time::Duration::from_secs(86_400),
+            std::time::Duration::from_secs(259_200),
+        );
+        let policy = crate::IngestPolicy::from_env();
+        match domain_probe::run_probe_tick(http, conn, &robots, policy).await {
+            Ok(n) => tracing::info!(n, "probe tick"),
+            Err(e) => tracing::warn!("probe tick: {e}"),
+        }
+    }
+
     Ok(())
 }
 
 /// Spawn background task: every `interval_secs`, run builtin + configured HTTP feeds.
-pub fn spawn(redis_url: String, interval_secs: u64) {
+pub fn spawn(redis_url: String, interval_secs: u64, database_url: Option<String>) {
     if interval_secs == 0 {
         return;
     }
@@ -95,6 +144,20 @@ pub fn spawn(redis_url: String, interval_secs: u64) {
         };
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        let pool: Option<PgPool> = match &database_url {
+            Some(d) if !d.trim().is_empty() => {
+                match PgPoolOptions::new().max_connections(3).connect(d).await {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        tracing::warn!("discover_scheduler db: {e}");
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+
         loop {
             interval.tick().await;
             let client = match redis::Client::open(redis_url.as_str()) {
@@ -111,7 +174,7 @@ pub fn spawn(redis_url: String, interval_secs: u64) {
                     continue;
                 }
             };
-            if let Err(e) = tick_once(&http, &mut conn).await {
+            if let Err(e) = tick_once(&http, &mut conn, pool.as_ref()).await {
                 tracing::warn!("discover_scheduler tick: {e}");
             }
         }

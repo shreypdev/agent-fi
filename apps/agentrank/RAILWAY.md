@@ -17,6 +17,23 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
 
 ---
 
+## Qdrant on Railway (optional hybrid search)
+
+The Rust stack uses **`qdrant-client`** over **gRPC on port 6334** (REST is **6333** — do not point `QDRANT_URL` at the REST port).
+
+**Set the same `QDRANT_URL` on every service that talks to Qdrant:** **`searchd`**, **`agentbot`**, and (if you probe it) **`healthd`**. Omit it everywhere for BM25-only search.
+
+**Prefer Railway private networking** (same project / environment):
+
+- **`http://qdrant:6334`** — short DNS name (service name may be `Qdrant` → try `qdrant` lowercase).
+- **`https://qdrant.railway.internal:6334`** — internal hostname shown under **Qdrant → Settings → Networking → Private networking**.
+
+Use **`http` vs `https`** depending on what actually connects; both are seen in the wild—verify with deploy logs / `healthd` / **`searchd` `GET /ready`** (Qdrant is checked when `QDRANT_URL` is set).
+
+**Avoid** public **`https://*.up.railway.app:6334`** (or similar) for **gRPC**: Railway’s public edge is aimed at HTTP; **`list_collections`** and hybrid search often **fail** with a generic error. Use **private** URLs for gRPC.
+
+---
+
 ## 1. `searchd` (search API + index)
 
 1. **New service** → connect repo → **Settings → Config as code** → `apps/agentrank/railway.toml`.
@@ -29,6 +46,7 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
    - `CORS_ORIGINS` — include your **Landing** and **Console UI** public origins in prod.
    - `CORS_REQUIRE_ORIGINS=1` in prod.
    - Optional: `METRICS_BEARER_TOKEN`, `SEARCHD_INDEX_BOOT`, `TRUST_PROXY_HEADERS`, etc. (unchanged from before).
+   - Optional: **`QDRANT_URL`** — hybrid search (gRPC). See **[Qdrant on Railway](#qdrant-on-railway-optional-hybrid-search)** above; use **private** networking, not public `*.up.railway.app` for gRPC.
    - Optional: **`SEARCH_API_KEY`** — **searchd only.** If set, requests to **`POST /v1/hints`** with `Authorization: Bearer <this value>` get a **higher daily hint cap** (50 vs 5 for anonymous). Other services (**consoled**, **agentbot**, **healthd**) do **not** use this variable.
 4. **Health check:** `GET /ready` (readiness).
 5. Deploy → copy **public HTTPS URL** → use as **`VITE_SEARCH_API_BASE_URL`** on Landing.
@@ -57,6 +75,9 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
 2. **Variables:**
    - **`AGENTRANK_PROCESS=agentbot`**
    - `DATABASE_URL`, `REDIS_URL` — same as searchd.
+   - Optional: **`QDRANT_URL`** — same value as **searchd** for vector upserts after ingest (private gRPC URL; see **[Qdrant on Railway](#qdrant-on-railway-optional-hybrid-search)**).
+   - Optional: **`SEARCH_INDEX_PATH`** — if set with **`QDRANT_URL`**, post-ingest updates Tantivy + Qdrant (see [docs/railway-architecture.md](../../docs/railway-architecture.md)).
+   - Optional: **`AGENTBOT_BOOT_MIGRATE=1`** (default) — runs **`sqlx migrate`** on container start so Week 8+ tables (`registry_sync_state`, `agent_aliases`, …) exist when **agentbot** deploys without searchd. Set **`AGENTBOT_BOOT_MIGRATE=0`** only if migrations always run in another service or a release command.
    - Optional: **`AGENTBOT_BOOT_DISCOVER=1`** — runs **`agentbot discover builtin` once** before `run-loop` (queues the built-in demo URL). Turn off when you use your own seeds only.
    - Optional: `GITHUB_TOKEN` for `discover github` (run via one-off / cron if you add a command override later).
    - Optional: `AGENTBOT_METRICS_BIND=0.0.0.0:9092` — expose **9092** on the service if you scrape Prometheus.
@@ -81,7 +102,7 @@ See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
    - **`AGENTRANK_PROCESS=healthd`**
    - **`DATABASE_URL`** — reference Postgres (same as searchd).
    - **`REDIS_URL`** — reference Redis.
-   - Optional: **`QDRANT_URL`** — e.g. `http://qdrant:6334` on private networking; if set and non-empty, the probe **requires** Qdrant to answer. Omit if you do not run Qdrant.
+   - Optional: **`QDRANT_URL`** — same private gRPC URL as **searchd** / **agentbot** (see **[Qdrant on Railway](#qdrant-on-railway-optional-hybrid-search)**). If set and non-empty, the probe **requires** Qdrant to answer. Omit if you do not run Qdrant.
    - Optional: **`RUST_LOG=debug`** for verbose logs.
 3. **Deploy / Cron:** use **Railway Cron** (or a scheduled job) so the container runs on an interval; success = exit **0**. Do **not** treat it like a long-running web service — there is no `PORT` to probe.
 4. **No** `PORT`, `SEARCH_INDEX_PATH`, or CORS.

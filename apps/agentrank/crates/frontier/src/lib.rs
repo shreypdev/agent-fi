@@ -2,10 +2,40 @@
 
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Default Redis key for the v0 frontier (single queue).
 pub const DEFAULT_FRONTIER_KEY: &str = "agentrank:frontier:v0";
+
+/// Provenance for a discovery enqueue (Week 8 §D).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrontierMeta {
+    /// Stable source label: `sitemap_scheduled`, `domain_probe`, `pulsemcp_registry`, …
+    pub discovery_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+}
+
+impl FrontierMeta {
+    pub fn new(discovery_source: impl Into<String>) -> Self {
+        Self {
+            discovery_source: discovery_source.into(),
+            confidence: None,
+        }
+    }
+
+    pub fn with_confidence(mut self, c: f64) -> Self {
+        self.confidence = Some(c);
+        self
+    }
+}
+
+/// Normalize URL for ZSET member and meta hash field (trim; single representation).
+#[must_use]
+pub fn normalize_frontier_url(url: &str) -> String {
+    url.trim().to_string()
+}
 
 /// Result of [`UrlFrontier::enqueue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,14 +56,20 @@ impl UrlFrontier {
         Self { key: key.into() }
     }
 
-    /// Enqueue or update priority. Same URL is a single member (dedup).
+    /// Redis hash key holding JSON [`FrontierMeta`] per frontier URL.
+    pub fn meta_key(&self) -> String {
+        format!("{}:meta", self.key)
+    }
+
+    /// Enqueue or update priority. Same URL is a single member (dedup). No provenance metadata.
     pub async fn enqueue(
         &self,
         conn: &mut MultiplexedConnection,
         url: &str,
         priority_score: f64,
     ) -> Result<EnqueueResult, FrontierError> {
-        let added: i32 = conn.zadd(&self.key, url, priority_score).await?;
+        let u = normalize_frontier_url(url);
+        let added: i32 = conn.zadd(&self.key, &u, priority_score).await?;
         Ok(if added > 0 {
             EnqueueResult::Inserted
         } else {
@@ -41,13 +77,75 @@ impl UrlFrontier {
         })
     }
 
-    /// Remove and return the URL with the highest score, if any.
+    /// Enqueue or update priority and attach [`FrontierMeta`] (HSET).
+    pub async fn enqueue_with_meta(
+        &self,
+        conn: &mut MultiplexedConnection,
+        url: &str,
+        priority_score: f64,
+        meta: &FrontierMeta,
+    ) -> Result<EnqueueResult, FrontierError> {
+        let u = normalize_frontier_url(url);
+        let added: i32 = conn.zadd(&self.key, &u, priority_score).await?;
+        let meta_json = serde_json::to_string(meta)?;
+        let mk = self.meta_key();
+        let _: () = conn.hset(&mk, &u, meta_json).await?;
+        Ok(if added > 0 {
+            EnqueueResult::Inserted
+        } else {
+            EnqueueResult::ScoreUpdated
+        })
+    }
+
+    /// Read metadata for a URL (if any) without dequeuing.
+    pub async fn get_meta(
+        &self,
+        conn: &mut MultiplexedConnection,
+        url: &str,
+    ) -> Result<Option<FrontierMeta>, FrontierError> {
+        let u = normalize_frontier_url(url);
+        let mk = self.meta_key();
+        let raw: Option<String> = conn.hget(&mk, &u).await?;
+        let Some(s) = raw else {
+            return Ok(None);
+        };
+        Ok(serde_json::from_str(&s).ok())
+    }
+
+    /// Remove and return the URL with the highest score, if any. Provenance metadata is removed.
     pub async fn dequeue_highest(
         &self,
         conn: &mut MultiplexedConnection,
     ) -> Result<Option<(String, f64)>, FrontierError> {
         let popped: Option<Vec<(String, f64)>> = conn.zpopmax(&self.key, 1).await?;
-        Ok(popped.and_then(|mut v| v.pop()))
+        let Some(mut v) = popped else {
+            return Ok(None);
+        };
+        let Some((url, score)) = v.pop() else {
+            return Ok(None);
+        };
+        let mk = self.meta_key();
+        let _: i32 = conn.hdel(&mk, &url).await?;
+        Ok(Some((url, score)))
+    }
+
+    /// Like [`Self::dequeue_highest`] but returns attached [`FrontierMeta`] if present.
+    pub async fn dequeue_highest_with_meta(
+        &self,
+        conn: &mut MultiplexedConnection,
+    ) -> Result<Option<(String, f64, Option<FrontierMeta>)>, FrontierError> {
+        let popped: Option<Vec<(String, f64)>> = conn.zpopmax(&self.key, 1).await?;
+        let Some(mut v) = popped else {
+            return Ok(None);
+        };
+        let Some((url, score)) = v.pop() else {
+            return Ok(None);
+        };
+        let mk = self.meta_key();
+        let raw: Option<String> = conn.hget(&mk, &url).await?;
+        let meta = raw.and_then(|s| serde_json::from_str(&s).ok());
+        let _: i32 = conn.hdel(&mk, &url).await?;
+        Ok(Some((url, score, meta)))
     }
 
     /// Current number of URLs in the frontier.
@@ -59,6 +157,7 @@ impl UrlFrontier {
     /// Remove all members (test / admin).
     pub async fn clear(&self, conn: &mut MultiplexedConnection) -> Result<(), FrontierError> {
         let _: () = conn.del(&self.key).await?;
+        let _: () = conn.del(self.meta_key()).await?;
         Ok(())
     }
 }
@@ -68,6 +167,8 @@ impl UrlFrontier {
 pub enum FrontierError {
     #[error("redis: {0}")]
     Redis(#[from] redis::RedisError),
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 #[cfg(test)]
@@ -101,6 +202,46 @@ mod tests {
         let (u, s) = f.dequeue_highest(&mut conn).await.unwrap().unwrap();
         assert_eq!(u, "https://a.com/x");
         assert!((s - 5.0).abs() < 1e-9);
+
+        f.clear(&mut conn).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn enqueue_with_meta_roundtrip_on_dequeue() {
+        let Some(url) = redis_url() else {
+            return;
+        };
+        let client = Client::open(url.as_str()).unwrap();
+        let mut conn = client.get_multiplexed_async_connection().await.unwrap();
+        let f = UrlFrontier::new(format!("{DEFAULT_FRONTIER_KEY}:test_meta_rt"));
+        f.clear(&mut conn).await.unwrap();
+
+        let m = FrontierMeta::new("sitemap_scheduled").with_confidence(0.9);
+        f.enqueue_with_meta(&mut conn, "https://a.com/c", 2.0, &m)
+            .await
+            .unwrap();
+
+        let got = f
+            .get_meta(&mut conn, "https://a.com/c")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.discovery_source, "sitemap_scheduled");
+        assert!((got.confidence.unwrap() - 0.9).abs() < 1e-9);
+
+        let (u, s, meta) = f
+            .dequeue_highest_with_meta(&mut conn)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(u, "https://a.com/c");
+        assert!((s - 2.0).abs() < 1e-9);
+        assert_eq!(meta.as_ref().unwrap().discovery_source, "sitemap_scheduled");
+        assert!(f
+            .get_meta(&mut conn, "https://a.com/c")
+            .await
+            .unwrap()
+            .is_none());
 
         f.clear(&mut conn).await.unwrap();
     }

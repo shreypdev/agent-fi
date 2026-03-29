@@ -11,6 +11,7 @@ members = [
     "crates/searchd",
     "crates/consoled",
     "crates/registry-connectors",
+    "crates/agentrank-sitemap",
     "crates/embed",
     "crates/vector",
 ]

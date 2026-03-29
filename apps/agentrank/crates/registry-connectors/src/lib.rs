@@ -1,5 +1,11 @@
 //! Pluggable **registry** / seed sources that emit Agent Card URLs for the frontier.
 
+mod paginated_registries;
+
+pub use paginated_registries::{
+    AgentVerseRegistry, GenericJsonRegistry, McpSoRegistry, PulseMcpRegistry,
+};
+
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -10,6 +16,25 @@ use thiserror::Error;
 pub struct DiscoveredUrl {
     pub url: String,
     pub priority: f64,
+    /// Provenance label for frontier / AVERT (Week 8 §D).
+    pub discovery_source: String,
+    pub confidence: Option<f64>,
+}
+
+impl DiscoveredUrl {
+    pub fn new(url: impl Into<String>, priority: f64, discovery_source: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            priority,
+            discovery_source: discovery_source.into(),
+            confidence: None,
+        }
+    }
+
+    pub fn with_confidence(mut self, c: f64) -> Self {
+        self.confidence = Some(c);
+        self
+    }
 }
 
 #[derive(Debug, Error)]
@@ -26,6 +51,19 @@ pub enum RegistryError {
 pub trait RegistrySource: Send + Sync {
     fn source_name(&self) -> &'static str;
     async fn discover(&self, client: &Client) -> Result<Vec<DiscoveredUrl>, RegistryError>;
+
+    /// Cursor-based pagination; default = single page via [`Self::discover`].
+    async fn discover_paginated(
+        &self,
+        client: &Client,
+        cursor: Option<String>,
+    ) -> Result<(Vec<DiscoveredUrl>, Option<String>), RegistryError> {
+        if cursor.is_some() {
+            return Ok((vec![], None));
+        }
+        let v = self.discover(client).await?;
+        Ok((v, None))
+    }
 }
 
 /// Small built-in list for demos and smoke tests (extend in code or replace with HTTP feeds).
@@ -38,10 +76,11 @@ impl RegistrySource for BuiltinDemoSeed {
     }
 
     async fn discover(&self, _client: &Client) -> Result<Vec<DiscoveredUrl>, RegistryError> {
-        Ok(vec![DiscoveredUrl {
-            url: "https://pronox-public-agent.up.railway.app/.well-known/agent-card.json".into(),
-            priority: 2.0,
-        }])
+        Ok(vec![DiscoveredUrl::new(
+            "https://pronox-public-agent.up.railway.app/.well-known/agent-card.json",
+            2.0,
+            "builtin_demo_seed",
+        )])
     }
 }
 
@@ -82,9 +121,10 @@ impl RegistrySource for HttpJsonUrlFeed {
             ));
         };
         let p = self.default_priority;
+        let src = self.source_name().to_string();
         Ok(urls
             .into_iter()
-            .map(|url| DiscoveredUrl { url, priority: p })
+            .map(|url| DiscoveredUrl::new(url, p, src.clone()))
             .collect())
     }
 }
@@ -115,9 +155,10 @@ impl RegistrySource for StaticJsonFile {
             ));
         };
         let p = self.default_priority;
+        let src = self.source_name().to_string();
         Ok(urls
             .into_iter()
-            .map(|url| DiscoveredUrl { url, priority: p })
+            .map(|url| DiscoveredUrl::new(url, p, src.clone()))
             .collect())
     }
 }

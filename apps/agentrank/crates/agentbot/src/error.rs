@@ -28,4 +28,7 @@ pub enum IngestError {
 
     #[error("redirect landed on blocked URL: {0}")]
     PostRedirectPolicy(String),
+
+    #[error("ingest internal: {0}")]
+    Internal(String),
 }

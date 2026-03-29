@@ -1,7 +1,7 @@
 //! Enqueue related card URLs discovered from normalized `card_json`.
 
 use agentrank_crawl_policy::validate_outbound_url;
-use agentrank_frontier::UrlFrontier;
+use agentrank_frontier::{FrontierMeta, UrlFrontier};
 use redis::aio::MultiplexedConnection;
 use serde_json::Value;
 use sqlx::types::Json;
@@ -46,7 +46,8 @@ pub async fn enqueue_card_links(
         {
             continue;
         }
-        let _ = frontier.enqueue(redis, &u, 0.5).await;
+        let m = FrontierMeta::new("card_expand");
+        let _ = frontier.enqueue_with_meta(redis, &u, 0.5, &m).await;
         metrics::counter!("agentrank_card_expand_enqueue_total").increment(1);
     }
     Ok(())

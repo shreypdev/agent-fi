@@ -7,7 +7,7 @@ use crate::rate_limit::{check_hints_daily_limit, check_search_rate_limit};
 use crate::AppState;
 use agentrank_crawl_policy::validate_outbound_url;
 use agentrank_embed::embed_text;
-use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
+use agentrank_frontier::{FrontierMeta, UrlFrontier, DEFAULT_FRONTIER_KEY};
 use agentrank_search_index::search::search_agents;
 use agentrank_vector::search_knn;
 use axum::extract::connect_info::ConnectInfo;
@@ -399,7 +399,8 @@ pub async fn post_hints(
 
     let card_url = parsed.as_str().to_string();
     let f = UrlFrontier::new(DEFAULT_FRONTIER_KEY);
-    f.enqueue(&mut redis, &card_url, 1.0)
+    let meta = FrontierMeta::new("searchd_hints");
+    f.enqueue_with_meta(&mut redis, &card_url, 1.0, &meta)
         .await
         .map_err(|e| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,

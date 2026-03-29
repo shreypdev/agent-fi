@@ -5,7 +5,7 @@ use agentrank_agentbot::{
     ingest_card_url_with_policy, run_drain, run_loop, CrawlRunConfig, IngestPolicy,
 };
 use agentrank_data_plane::{database_url, redis_url};
-use agentrank_frontier::{UrlFrontier, DEFAULT_FRONTIER_KEY};
+use agentrank_frontier::{FrontierMeta, UrlFrontier, DEFAULT_FRONTIER_KEY};
 use agentrank_registry_connectors::{
     BuiltinDemoSeed, DiscoveredUrl, HttpJsonUrlFeed, RegistrySource, StaticJsonFile,
 };
@@ -89,7 +89,11 @@ async fn enqueue_discovered(
     let f = UrlFrontier::new(DEFAULT_FRONTIER_KEY);
     let mut n = 0u32;
     for d in items {
-        let r = f.enqueue(conn, &d.url, d.priority).await?;
+        let meta = FrontierMeta {
+            discovery_source: d.discovery_source.clone(),
+            confidence: d.confidence,
+        };
+        let r = f.enqueue_with_meta(conn, &d.url, d.priority, &meta).await?;
         n += 1;
         tracing::debug!(?r, url = %d.url, "enqueued from {}", source);
         match r {
@@ -137,7 +141,10 @@ async fn main() -> anyhow::Result<()> {
             let client = redis::Client::open(ru.as_str())?;
             let mut conn = client.get_multiplexed_async_connection().await?;
             let f = UrlFrontier::new(DEFAULT_FRONTIER_KEY);
-            let r = f.enqueue(&mut conn, &url, priority).await?;
+            let meta = FrontierMeta::new("manual_cli");
+            let r = f
+                .enqueue_with_meta(&mut conn, &url, priority, &meta)
+                .await?;
             tracing::info!(?r, url = %url, priority, "enqueued");
         }
         Command::RunOnce => {
@@ -233,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
                         github_discover::discover_github_card_urls(&http, &query, max).await?;
                     let items: Vec<DiscoveredUrl> = urls
                         .into_iter()
-                        .map(|url| DiscoveredUrl { url, priority })
+                        .map(|url| DiscoveredUrl::new(url, priority, "github_code_search"))
                         .collect();
                     let n = enqueue_discovered(&mut conn, "github_code_search", items).await?;
                     tracing::info!(n, "github discover enqueued");

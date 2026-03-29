@@ -2,13 +2,17 @@
 
 mod card_expand;
 mod crawl_run;
+mod dedup;
 mod discover_scheduler;
+pub mod domain_probe;
 mod error;
 pub mod github_discover;
 mod host_rate_limit;
 pub mod index_pipeline;
 pub mod metrics_srv;
 mod recrawl;
+mod registry_sync;
+pub mod sitemap_discovery;
 
 pub use crawl_run::{run_drain, run_loop, CrawlRunConfig};
 pub use error::IngestError;
@@ -16,7 +20,10 @@ pub use host_rate_limit::check_host_fetch_allowed;
 
 use agentrank_card::parse_agent_card_bytes;
 use agentrank_crawl_policy::validate_outbound_url;
+use dedup::{find_existing_by_urls, merge_cards};
+use metrics::counter;
 use reqwest::Client;
+use sha2::{Digest, Sha256};
 use sqlx::types::Json;
 use sqlx::PgPool;
 use std::time::Duration;
@@ -75,6 +82,7 @@ pub struct IngestSuccess {
     pub external_id: String,
     pub crawl_history_id: i64,
     pub content_hash: String,
+    pub primary_domain: String,
 }
 
 /// Fetch one URL, parse Agent Card, upsert provider + agent, record crawl + trust.
@@ -173,6 +181,89 @@ pub async fn ingest_card_url_with_policy(
         }
     };
 
+    fn hash_card_json(v: &serde_json::Value) -> Result<String, IngestError> {
+        let bytes = serde_json::to_vec(v).map_err(|e| IngestError::Internal(e.to_string()))?;
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        Ok(format!("{:x}", h.finalize()))
+    }
+
+    if let Some(existing) = find_existing_by_urls(pool, &card.canonical_url, &card.endpoint_url)
+        .await
+        .map_err(|e| IngestError::Internal(e.to_string()))?
+    {
+        if existing.external_id != card.external_id {
+            let merged = merge_cards(&existing, &card.normalized_card, "indexed");
+            let content_hash = hash_card_json(&merged)?;
+            let mut tx = pool.begin().await?;
+
+            sqlx::query(
+                r#"
+                UPDATE agents SET
+                    card_json = $1,
+                    content_hash = $2,
+                    source_url = $3,
+                    name = $4,
+                    description = $5,
+                    updated_at = NOW()
+                WHERE id = $6
+                "#,
+            )
+            .bind(Json(merged.clone()))
+            .bind(&content_hash)
+            .bind(&card.source_url)
+            .bind(&card.name)
+            .bind(&card.description)
+            .bind(existing.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| IngestError::Internal(e.to_string()))?;
+
+            let crawl_history_id: i64 = sqlx::query_scalar(
+                r#"
+                INSERT INTO crawl_history (url, agent_id, http_status, error_code, error_detail, response_bytes)
+                VALUES ($1, $2, $3, NULL, NULL, $4)
+                RETURNING id
+                "#,
+            )
+            .bind(fetch_url)
+            .bind(existing.id)
+            .bind(status.as_u16() as i32)
+            .bind(bytes.len() as i32)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| IngestError::Internal(e.to_string()))?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO agent_aliases (agent_id, alias_url, source)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (agent_id, alias_url) DO NOTHING
+                "#,
+            )
+            .bind(existing.id)
+            .bind(fetch_url)
+            .bind("ingest_merge")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| IngestError::Internal(e.to_string()))?;
+
+            tx.commit()
+                .await
+                .map_err(|e| IngestError::Internal(e.to_string()))?;
+
+            counter!("agentrank_dedup_merges_total").increment(1);
+
+            return Ok(IngestSuccess {
+                agent_id: existing.id,
+                external_id: existing.external_id,
+                crawl_history_id,
+                content_hash,
+                primary_domain: card.primary_domain.clone(),
+            });
+        }
+    }
+
     let mut tx = pool.begin().await?;
 
     let provider_id: Uuid = sqlx::query_scalar(
@@ -256,6 +347,7 @@ pub async fn ingest_card_url_with_policy(
         external_id: card.external_id,
         crawl_history_id,
         content_hash: card.content_hash,
+        primary_domain: card.primary_domain,
     })
 }
 
