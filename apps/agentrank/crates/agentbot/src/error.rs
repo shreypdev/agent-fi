@@ -1,4 +1,5 @@
 use agentrank_card::ParseError;
+use agentrank_crawl_policy::UrlPolicyError;
 use thiserror::Error;
 
 /// Ingest pipeline failure.
@@ -21,4 +22,10 @@ pub enum IngestError {
 
     #[error("invalid fetch URL: {0}")]
     BadUrl(#[from] url::ParseError),
+
+    #[error("outbound URL blocked by policy: {0}")]
+    UrlPolicy(#[from] UrlPolicyError),
+
+    #[error("redirect landed on blocked URL: {0}")]
+    PostRedirectPolicy(String),
 }

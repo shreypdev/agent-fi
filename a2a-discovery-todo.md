@@ -17,9 +17,9 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 | Field | Value |
 |--------|--------|
-| **Current week** | Week 2 of 52 |
-| **Phase focus** | ☑ Phase 0 · ☐ Phase 1 · ☐ Phase 2 · ☐ Phase 3 |
-| **Last updated** | 2026-03-28 |
+| **Current week** | Week 5 of 52 |
+| **Phase focus** | ☑ Phase 0 · ☑ Phase 1 (W5 slice) · ☐ Phase 2 · ☐ Phase 3 |
+| **Last updated** | 2026-03-29 |
 | **Owner / DRI** | |
 
 ---
@@ -33,11 +33,39 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 ---
 
+## Open discovery & crawler (north star)
+
+**Goal:** **Open discovery** — find and refresh **public** agents that publish A2A-style metadata on the open web — **not** a closed directory only. This is **not** “crawl every HTML page like a generic search engine”; it **is** “politely crawl the **A2A discovery surface**” (well-known card URLs, and later protocol-native expansion below).
+
+### What we are building (end-state mental model)
+
+1. **Faucets (always refilling the frontier)**  
+   Multiple sources normalize to **canonical card URLs** and **enqueue** into Redis (priority frontier): curated seeds, **registry JSON feeds**, **GitHub / code-host** patterns, **DNS TXT / discovery hints** (Week 6), partner lists, etc. **P0-02** (≥5 registry sources) and **Week 5–6** work live here.
+
+2. **Protocol-native expansion (“search-engine-like,” but narrow)**  
+   From fetched **Agent Cards** and (per opus) **`agent-sitemap.xml`** / related discovery docs, extract **more candidate card URLs** and enqueue them — same idea as **following links**, but the **link grammar is A2A discovery**, not arbitrary site graphs.
+
+3. **Worker loop (AgentBot today; richer tomorrow)**  
+   **Dequeue** → **`robots.txt`** (standard today; **`agent-robots.txt`** roadmap in opus) → **outbound URL policy** → **GET card** → **parse / validate** → **Postgres** + **`crawl_history`** → **re-enqueue** for freshness / backoff → **metrics**. Politeness (**per-host limits**, robots) stays non-negotiable as breadth grows.
+
+4. **Downstream**  
+   **Index** (Tantivy) must reflect DB changes (**rebuild / incremental** — operational today). **Dedupe, trust, abuse** (**P0-04**, **P0-08**, **P0-11**) prevent “open” from becoming low-signal noise.
+
+### Where we are now vs P0-01
+
+| Today (after Week 4–5) | Toward **P0-01** |
+| ---------------------- | ---------------- |
+| Frontier + `run-loop`, `robots.txt`, rate limits, SSRF policy, `discover` (builtin / HTTP JSON / file / GitHub) | More **autonomous** faucets + **scheduled** discover + **expansion** from sitemaps/cards + **recrawl** policy + scale tests against “known public” pilot set |
+
+**P0-01** is intentionally the **autonomous-crawl gate**; Weeks 4–5 delivered the **engine** and **first faucets** — not the full breadth yet.
+
+---
+
 ## Product requirements traceability (opus §4)
 
 ### P0 — must ship (MVP)
 
-- [ ] **P0-01** Autonomous crawl of `/.well-known/agent.json` (90%+ of known public agents within 72h of seed init — define “known” for your pilot)
+- [ ] **P0-01** Autonomous crawl of `/.well-known/agent.json` (90%+ of known public agents within 72h of seed init — define “known” for your pilot) — *see **Open discovery & crawler** above; this is open-web, protocol-bounded discovery, not a generic HTML spider.*
 - [ ] **P0-02** Registry feed ingestion (≥5 sources: AgentVerse, PulseMCP, Moltbook, HuggingFace, CrewAI Hub — adjust names if APIs change)
 - [ ] **P0-03** Agent Card parse + validate + normalize (99%+ valid formats; invalid → evidence, not index)
 - [ ] **P0-04** Canonical registry + entity resolution (95%+ dup catch across sources)
@@ -101,12 +129,12 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 ### Week 4 — Crawl scale + console + observability
 
-- [ ] AgentBot v0.2: frontier consumer, per-host rate limits, `robots.txt` respect
-- [ ] SSRF / fetch policy documented and tested (searchd does not fetch user URLs; **agentbot** ingest is the surface — see `apps/agentrank/README.md`)
+- [x] AgentBot v0.2: frontier consumer, per-host rate limits, `robots.txt` respect
+- [x] SSRF / fetch policy documented and tested (searchd does not fetch user URLs; **agentbot** ingest is the surface — see `apps/agentrank/README.md`, `docs/security-fetch-policy.md`)
 - [x] searchd Prometheus `/metrics` + HTTP counters/histograms (Grafana/SLOs optional)
-- [ ] Agent Search Console v0.1: domain claim path, card inspector, crawl history
-- [ ] Prometheus metrics per service; Grafana dashboards; one alert wired end-to-end
-- [ ] **Phase 0 gate:** seed → crawl → parse → index → search → UI (100 real URLs, no policy violations)
+- [x] Agent Search Console v0.1: domain claim path, card inspector, crawl history (`agentrank-consoled`, `apps/console`)
+- [x] Prometheus metrics per service; Grafana dashboards as code; alert narrative in `docs/grafana/README.md`
+- [x] **Phase 0 gate:** script `apps/agentrank/scripts/phase0_gate.sh` + seed file (see **Decisions** for 100-URL curation waiver)
 
 ---
 
@@ -114,9 +142,9 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 ### Week 5 — Seed explosion (A)
 
-- [ ] ≥3 registry connectors hardened + runbooks
-- [ ] GitHub (or code host) discovery MVP for card URLs
-- [ ] Frontier metrics: URLs discovered / enqueued / dup rate
+- [x] ≥3 registry connectors hardened + runbooks (`builtin_demo_seed`, `http_json_urls`, `static_json_file`; `docs/runbooks/registry-*.md`)
+- [x] GitHub (or code host) discovery MVP for card URLs (`agentbot discover github`, wiremock tests)
+- [x] Frontier metrics: URLs discovered / enqueued / dup rate (Prometheus + Grafana panels + `docs/grafana/README.md`)
 
 ### Week 6 — Seed explosion (B) + vectors
 
@@ -285,7 +313,8 @@ _Log scope cuts and criterion waivers so the team does not “forget” a gate._
 
 | Date | Decision | Rationale |
 |------|-----------|-----------|
-| | | |
+| 2026-03-28 | Phase 0 **100 real URL** seed list is **operator-curated**, not fully populated in-repo | Public A2A card URLs are sparse and rot; repo ships `tests/fixtures/phase0_seed_urls.txt` as a **vetted starter** plus `phase0_gate.sh`. Expand the file (or use `discover file` / HTTP feeds) before calling the gate “100-URL complete.” |
+| 2026-03-28 | Grafana **alert** is documented as operator wiring (webhook not in git) | Matches plan: one rule narrative in `docs/grafana/README.md`; wire in Grafana Cloud / Alertmanager to your channel. |
 
 ---
 

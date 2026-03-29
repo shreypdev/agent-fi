@@ -1,0 +1,17 @@
+# Manual / nightly: Phase 0 gate is network- and infra-heavy. Run locally first:
+#   DATABASE_URL=... REDIS_URL=... SEARCH_INDEX_PATH=... SEARCHD_URL=... \
+#     bash apps/agentrank/scripts/phase0_gate.sh
+name: Phase 0 gate (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  instructions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Document gate
+        run: |
+          echo "See apps/agentrank/scripts/phase0_gate.sh and tests/fixtures/phase0_seed_urls.txt."
+          echo "CI does not run the full gate by default (external URLs, long drain)."

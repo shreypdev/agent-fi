@@ -4,6 +4,8 @@ Week 1 **repo + data plane**: PostgreSQL/Redis helpers, `healthd`, **sqlx** migr
 
 Week 2 **ingest path**: Agent Card parser (`agentrank-card`), Redis frontier (`agentrank-frontier`), **`agentbot`** CLI (fetch → parse → persist).
 
+Week 4 **crawl policy**: `agentrank-crawl-policy` (`robots.txt` parse/cache, outbound URL validation). **`searchd` does not fetch user URLs**; only **`agentbot`** egresses. See [`docs/security-fetch-policy.md`](../../docs/security-fetch-policy.md).
+
 ## Toolchain
 
 Uses [rust-toolchain.toml](./rust-toolchain.toml) (pinned stable). Install via [rustup](https://rustup.rs/).
@@ -94,9 +96,9 @@ cargo run -p agentrank-healthd --bin healthd
 
 Logs: set `RUST_LOG=debug` for more detail.
 
-## `agentbot` (AgentBot v0.1)
+## `agentbot` (AgentBot v0.2)
 
-Fetches a card URL with `AgentBot/1.0` user-agent (1 MiB body limit, up to 5 redirects), validates/normalizes JSON, upserts `providers` + `agents`, appends `crawl_history`, ensures `trust_records` (`indexed`).
+Fetches a card URL with `AgentBot/1.0` user-agent (1 MiB body limit, up to 5 redirects), validates/normalizes JSON, upserts `providers` + `agents`, appends `crawl_history`, ensures `trust_records` (`indexed`). Before fetch: **HTTPS-only** URL policy (see [`docs/security-fetch-policy.md`](../../docs/security-fetch-policy.md)), **`robots.txt`** for the origin, **per-host Redis rate limit** (default 2 req/s bucket). Redirect target is re-validated.
 
 Configurable timeout for callers that need it:
 
@@ -116,7 +118,13 @@ cargo run -p agentrank-agentbot --bin agentbot -- ingest 'https://example.com/.w
 # Frontier (Redis sorted set `agentrank:frontier:v0`)
 cargo run -p agentrank-agentbot --bin agentbot -- enqueue 'https://example.com/.well-known/agent.json' --priority 10.0
 cargo run -p agentrank-agentbot --bin agentbot -- run-once
+cargo run -p agentrank-agentbot --bin agentbot -- drain --max 50
+# Long-running crawl (Unix; optional Prometheus on AGENTBOT_METRICS_BIND, e.g. 127.0.0.1:9093)
+export AGENTBOT_METRICS_BIND=127.0.0.1:9093
+cargo run -p agentrank-agentbot --bin agentbot -- run-loop
 ```
+
+Env (optional): `AGENTBOT_HOST_MAX_PER_SEC` (default `2`), `AGENTBOT_ROBOTS_TTL_OK_SECS`, `AGENTBOT_ROBOTS_TTL_NEGATIVE_SECS`, `AGENTBOT_METRICS_BIND`, `AGENTBOT_ALLOW_HTTP_LOCALHOST`, `AGENTBOT_ALLOW_LOOPBACK_HTTPS` (tests only).
 
 ## Week 3 — Search index + `searchd` API
 
@@ -153,9 +161,9 @@ cargo run -p agentrank-searchd --bin searchd
 - Generate bulk SQL: `python3 scripts/gen_1k_agents_sql.py --count 1000 > /tmp/seed.sql` then `psql "$DATABASE_URL" -f /tmp/seed.sql`, rebuild index.
 - Latency smoke: [`../../scripts/search_p99.sh`](../../scripts/search_p99.sh) (expects `SEARCHD_URL`, default `http://127.0.0.1:8080`). Target: **P99 &lt; 200ms** on reference hardware with a warm index (not enforced in CI).
 
-**Docker:** [`Dockerfile`](./Dockerfile) — `docker build -f apps/agentrank/Dockerfile -t searchd .` from repo root. Compose adds a `searchd` service in [`../dev/docker-compose.yml`](../dev/docker-compose.yml); **build the index into the volume first** (see dev README).
+**Docker:** [`Dockerfile`](./Dockerfile) — one image for **searchd**, **consoled**, and **agentbot** (`AGENTRANK_PROCESS`). Example: `docker build -f apps/agentrank/Dockerfile -t agentrank .` from repo root. Railway: see [`RAILWAY.md`](./RAILWAY.md). Compose adds `searchd` in [`../dev/docker-compose.yml`](../dev/docker-compose.yml); **build the index into the volume first** (see dev README).
 
-**Deferred (not Week 3):** hybrid vectors / Qdrant, rich `POST /v1/search` filters from opus §16, explain payloads, AVERT, Grafana/SLO dashboards (Week 4+). **agentbot** outbound fetch policy (SSRF hardening: allowlists, private-IP blocks) remains future work; search itself does not fetch user URLs.
+**Deferred (not Week 3):** hybrid vectors / Qdrant, rich `POST /v1/search` filters from opus §16, explain payloads, AVERT. Grafana/SLO: see `docs/grafana/` and [`RAILWAY.md`](./RAILWAY.md). **`agentbot`** outbound URL policy is implemented in `agentrank-crawl-policy`; DNS-rebinding-class hardening remains future work.
 
 ## Crates
 
@@ -165,6 +173,7 @@ cargo run -p agentrank-searchd --bin searchd
 | `agentrank-healthd`    | Binary: operational smoke test                     |
 | `agentrank-card`       | Agent Card parse, validate, normalize (`ParsedAgentCard`) |
 | `agentrank-frontier`   | Redis ZSET URL queue: enqueue / dequeue / dedup     |
+| `agentrank-crawl-policy` | `robots.txt` parse/cache + outbound URL validation |
 | `agentrank-agentbot`   | Library + `agentbot` binary: HTTP ingest + DB writes |
 | `agentrank-search-index` | Tantivy schema, indexer CLI `agentrank-index`     |
 | `agentrank-searchd`    | Axum `searchd` binary                              |

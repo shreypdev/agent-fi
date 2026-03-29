@@ -1,76 +1,127 @@
-# Railway — unified demo (Postgres + Redis + searchd + landing)
+# Railway — AgentRank (searchd, consoled, agentbot, console UI)
 
-Goal: one Railway **project** with **multiple services** (see [docs/railway-architecture.md](../../docs/railway-architecture.md)): catalog in Postgres, **Tantivy** on disk, **`searchd`** for `POST /v1/search`, and a **separate Landing** service that calls search over HTTPS via `VITE_SEARCH_API_BASE_URL` (build-time).
+All **Rust** services share **one Docker image** built from [`Dockerfile`](./Dockerfile). Railway **duplicates the service** three times with the same **root directory** (repo `.`) and the same **config as code** path [`railway.toml`](./railway.toml); only **environment variables** differ (`AGENTRANK_PROCESS`). No custom build commands or alternate build folders.
 
-## Config as code (recommended)
+**Console UI** is a **separate** Docker image ([`apps/console/Dockerfile`](../console/Dockerfile)) — same pattern as Landing (root + Dockerfile path in `railway.toml`).
 
-Point each service at the matching file so builds do **not** fall through to Railpack/npm:
+See also: [docs/railway-architecture.md](../../docs/railway-architecture.md).
 
-| Service  | Config file | Root directory |
-| -------- | ----------- | -------------- |
-| Landing  | [`apps/landing/railway.toml`](../landing/railway.toml) | Repository **root** `.` |
-| searchd  | [`railway.toml`](./railway.toml) (this app) | Repository **root** `.` |
+---
 
-In Railway: **Settings → Config as code** → path above (if not auto-detected). The repo root no longer ships a root `package-lock.json` (pnpm is canonical); Landing must use **Dockerfile** + pnpm in the image.
+## Prerequisites (one project)
 
-## Services (recommended)
+| Plugin / service | Purpose |
+| ---------------- | ------- |
+| **Postgres** | `DATABASE_URL` for searchd, consoled, agentbot |
+| **Redis** | `REDIS_URL` for searchd + **agentbot frontier / rate limits** |
 
-| Service    | Template        | Purpose |
-| ---------- | --------------- | ------- |
-| Postgres   | Railway Postgres | Source of truth; run `sqlx migrate` |
-| Redis      | Railway Redis or Upstash | Rate limits for `searchd` |
-| searchd    | **Docker** from this repo (`apps/agentrank/Dockerfile`) | Search API |
-| Landing    | **Docker** from `apps/landing/Dockerfile` | Set `VITE_SEARCH_API_BASE_URL` to searchd public URL |
+---
 
-## Environment variables
+## 1. `searchd` (search API + index)
 
-**searchd (container):**
+1. **New service** → connect repo → **Settings → Config as code** → `apps/agentrank/railway.toml`.
+2. **Root directory:** `.` (repository root).
+3. **Variables (runtime):**
+   - `DATABASE_URL` — reference Postgres.
+   - `REDIS_URL` — reference Redis.
+   - `SEARCH_INDEX_PATH` — e.g. `/tmp/agentrank-index` or a path on a **volume** (recommended for prod: attach volume, set `SEARCHD_INDEX_BOOT=reuse`).
+   - **`AGENTRANK_PROCESS=searchd`** (recommended explicit; if omitted, the image defaults to `searchd`).
+   - `CORS_ORIGINS` — include your **Landing** and **Console UI** public origins in prod.
+   - `CORS_REQUIRE_ORIGINS=1` in prod.
+   - Optional: `METRICS_BEARER_TOKEN`, `SEARCHD_INDEX_BOOT`, `TRUST_PROXY_HEADERS`, etc. (unchanged from before).
+4. **Health check:** `GET /ready` (readiness).
+5. Deploy → copy **public HTTPS URL** → use as **`VITE_SEARCH_API_BASE_URL`** on Landing.
 
-- `DATABASE_URL` — reference Postgres plugin.
-- `REDIS_URL` — reference Redis / Upstash.
-- `SEARCH_INDEX_PATH` — default `/tmp/agentrank-index` in the Docker image (ephemeral unless you attach a **volume**; see below).
-- `PORT` — Railway injects automatically; `searchd` listens on `PORT`.
-- **`TRUST_PROXY_HEADERS`** — optional override. On Railway, `X-Forwarded-For` / `X-Real-IP` are **trusted by default** when `RAILWAY_ENVIRONMENT` or `RAILWAY_PROJECT_ID` is set (typical deploy). Set **`TRUST_PROXY_HEADERS=0`** to use only the TCP peer (rare). Set **`1`** to force trust when not on Railway.
-- `CORS_ORIGINS` — comma-separated allowed browser origins (e.g. your landing `https://….up.railway.app`). Empty allows any origin (demo only).
-- **`CORS_REQUIRE_ORIGINS=1`** — production: fail startup if `CORS_ORIGINS` is empty or invalid (prevents accidental wide-open CORS).
-- Optional: `SEARCH_RATE_LIMIT_PER_MINUTE` (default `120`).
-- Optional: `SEARCHD_BOOT_MIGRATE=0` — skip `sqlx migrate` on start (if you run migrations in a Release Command).
-- Optional: `SEARCHD_BOOT_REBUILD_INDEX=0` — skip index rebuild on start (only if the index is pre-provisioned elsewhere).
-- Optional: **`SEARCHD_INDEX_BOOT=reuse`** — when rebuild is enabled, skip `rebuild` if `agentrank-index probe` succeeds (pair with a **persistent volume** mounted at `SEARCH_INDEX_PATH`, e.g. `/data/agentrank-index`). Default `full` rebuilds every start.
+---
 
-**Health checks:** `GET /health` is **liveness** (process only). **`GET /ready`** is **readiness** (Postgres + Redis + Tantivy index on disk). Point Railway health checks at `/ready` if you only want traffic when search can succeed.
+## 2. `consoled` (operator Console API)
 
-**Metrics:** `GET /metrics` — Prometheus text. Set **`METRICS_BEARER_TOKEN`** (non-empty) to require `Authorization: Bearer <token>`; leave unset for open access (local/demo only).
+1. **New service** → same repo → **same** `apps/agentrank/railway.toml` and root **`.`**.
+2. **Variables:**
+   - **`AGENTRANK_PROCESS=consoled`**
+   - `DATABASE_URL` — same Postgres as searchd.
+   - **`CONSOLE_API_KEY`** — long random secret (operators enter it in the Console UI).
+   - **`CONSOLE_CORS_ORIGIN`** — public origin of **Console UI** only, e.g. `https://your-console.up.railway.app` (no trailing slash).
+   - `PORT` — leave unset; Railway injects it.
+3. **Health check:** `GET /health` (no auth).
+4. Deploy → copy **public HTTPS URL** → this is **`VITE_CONSOLE_API_BASE`** for the Console UI **build** (step 4).
 
-**Index volume (recommended for prod):** Mount a Railway volume on `SEARCH_INDEX_PATH`, set `SEARCHD_INDEX_BOOT=reuse`, and run a full rebuild after changing [`INDEX_VERSION`](../crates/search-index/src/schema.rs) or when you need a guaranteed full reindex. **Multi-replica:** each instance can use its own volume + same boot policy, or share a read-only index from a single writer job (no concurrent writers to the same Tantivy directory).
+**Note:** `consoled` runs `sqlx migrate` on startup; shared migrations include `console_domain_claims`. `searchd` also migrates on boot — safe and idempotent.
 
-**Operations:** The entrypoint is **fail-fast** — if migrate or rebuild fails, the container exits before `searchd` starts. Watch Railway deploy logs and alerts; a bad migration should not go unnoticed.
+---
 
-The [`Dockerfile`](./Dockerfile) **entrypoint** runs `sqlx migrate`, index boot (`rebuild` or `reuse` probe), then `searchd`, so a single Railway Docker service can boot end-to-end without a separate release script.
+## 3. `agentbot` (crawl worker — scale replicas)
 
-**Landing (build):**
+1. **New service** → same repo → same `apps/agentrank/railway.toml`, root **`.`**.
+2. **Variables:**
+   - **`AGENTRANK_PROCESS=agentbot`**
+   - `DATABASE_URL`, `REDIS_URL` — same as searchd.
+   - Optional: **`AGENTBOT_BOOT_DISCOVER=1`** — runs **`agentbot discover builtin` once** before `run-loop` (queues the built-in demo URL). Turn off when you use your own seeds only.
+   - Optional: `GITHUB_TOKEN` for `discover github` (run via one-off / cron if you add a command override later).
+   - Optional: `AGENTBOT_METRICS_BIND=0.0.0.0:9092` — expose **9092** on the service if you scrape Prometheus.
+   - Politeness: `AGENTBOT_HOST_MAX_PER_SEC` (default `2`), `AGENTBOT_ROBOTS_TTL_*` — see `CrawlRunConfig::from_env` in code.
+3. **Start command:** leave **empty** (image entrypoint runs `entrypoint-agentbot.sh` → `agentbot run-loop`).
+4. **Scaling:** increase **replicas** in Railway; all workers share the Redis frontier (`ZPOPMAX` is atomic). Per-host rate limits are in Redis.
 
-- `VITE_SEARCH_API_BASE_URL` — public HTTPS URL of `searchd`.
+**Do not** set `AGENTBOT_ALLOW_HTTP_LOCALHOST` / `AGENTBOT_ALLOW_LOOPBACK_HTTPS` in production unless you understand the SSRF tradeoff.
 
-## Release / deploy commands
+**Seeding:** besides `AGENTBOT_BOOT_DISCOVER`, enqueue from a trusted machine or a one-off job:  
+`agentbot enqueue 'https://example.com/.well-known/agent.json' --priority 10`  
+(same image: override start command to run `agentbot discover http-json 'https://feed/...'` once, then restore `agentbot` service to `run-loop` only.)
 
-**Default (Docker image):** nothing extra — the container entrypoint runs migrations and rebuilds the index before `searchd` starts.
+---
 
-**Optional split:** set `SEARCHD_BOOT_MIGRATE=0` and `SEARCHD_BOOT_REBUILD_INDEX=0`, then use a Railway **Release Command** or one-off:
+## 4. Console UI (`apps/console`)
+
+1. **New service** → same repo → **Config as code** → [`apps/console/railway.toml`](../console/railway.toml).
+2. **Root directory:** `.`
+3. **Build variable (Docker build arg):** add **`VITE_CONSOLE_API_BASE`** in Railway and mark it **available at build time** (same pattern as Landing’s `VITE_*`). Value = **public URL of consoled** (step 2), **no trailing slash**.
+4. **No runtime env required** for API calls if the build arg was correct (Vite bakes the base URL).
+5. Deploy → operators open the Console URL → **Setup** → paste **`CONSOLE_API_KEY`**.
+
+---
+
+## 5. Search index freshness after crawls
+
+`agentbot` **writes Postgres**; `searchd` serves **Tantivy** built from DB. New ingests **do not** appear in `POST /v1/search` until the index is rebuilt.
+
+**Practical options:**
+
+- **Simplest:** after a large crawl, **redeploy** the **searchd** service (entrypoint runs `agentrank-index rebuild` by default), or temporarily set `SEARCHD_INDEX_BOOT=full` and redeploy.
+- **Slower cold starts avoided:** attach a **volume** to searchd, use `SEARCHD_INDEX_BOOT=reuse`, then run **manual redeploy** or a **scheduled redeploy** when you need freshness (Railway cron / external scheduler).
+- **Future:** incremental `upsert` pipeline or shared index storage — not in this image yet.
+
+---
+
+## Local Docker smoke (optional)
 
 ```bash
-sqlx migrate run --source migrations
-agentrank-index rebuild --output "$SEARCH_INDEX_PATH"
+# From repo root
+docker build -f apps/agentrank/Dockerfile -t agentrank:local .
+
+docker build -f apps/console/Dockerfile \
+  --build-arg VITE_CONSOLE_API_BASE=https://consoled.example.com \
+  -t agentrank-console:local .
 ```
 
-**Demo data:** migration `20260328200000_demo_seed_agents.sql` adds two agents idempotently; the entrypoint rebuilds the index so search returns them.
+---
 
-**Ingest real cards:** one-off `agentbot ingest <url>` (see `apps/agentrank/README.md`), then `agentrank-index upsert` or full `rebuild`.
+## Config-as-code summary
 
-## Cost notes
+| Railway service | Config file | `AGENTRANK_PROCESS` |
+| --------------- | ----------- | ------------------- |
+| searchd | `apps/agentrank/railway.toml` | `searchd` (or omit) |
+| consoled | `apps/agentrank/railway.toml` | `consoled` |
+| agentbot | `apps/agentrank/railway.toml` | `agentbot` |
+| Console UI | `apps/console/railway.toml` | — |
+| Landing | `apps/landing/railway.toml` | — |
 
-If Railway Postgres/Redis are too costly at idle, use **Neon** + **Upstash** and keep only `searchd` + landing on Railway; connection strings swap straight in.
+## Cost / scale notes
+
+- **Three Rust services** = **three** always-on allocations (searchd + consoled + agentbot); agentbot replicas multiply cost linearly.
+- **Console UI** + **Landing** are static/nginx — usually cheap.
+- **Egress:** agentbot fetches the public web; keep `AGENTBOT_HOST_MAX_PER_SEC` conservative.
 
 ## GitHub → Railway
 
-Either connect each Railway service to the repo (push to `master`), or add a GitHub Actions workflow with `RAILWAY_TOKEN` and the Railway CLI for explicit deploy logs.
+Connect the repo per service or use the Railway CLI / GitHub Action with `RAILWAY_TOKEN` for deploys.

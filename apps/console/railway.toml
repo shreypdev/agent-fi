@@ -1,0 +1,8 @@
+# Agent Search Console UI — static site; service root = repository root `.`
+# Railway: Settings → Config as code → `apps/console/railway.toml`
+#
+# Build-time: set Variable VITE_CONSOLE_API_BASE (Docker build arg) to your public consoled URL, no trailing slash.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/console/Dockerfile"

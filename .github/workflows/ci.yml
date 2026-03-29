@@ -59,6 +59,13 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: searchd has no outbound HTTP client (crawl stays in agentbot)
+        run: |
+          if grep -Rq 'reqwest\|ureq' crates/searchd/src 2>/dev/null; then
+            echo "::error::searchd must not add reqwest/ureq; user URL fetches belong in agentbot only"
+            exit 1
+          fi
+
       - name: cargo test
         run: cargo test --workspace
 
@@ -72,6 +79,9 @@ jobs:
         run: |
           cargo build -p agentrank-searchd
           cargo build -p agentrank-search-index --bin agentrank-index
+
+      - name: cargo build consoled
+        run: cargo build -p agentrank-consoled
 
       - name: Install sqlx-cli
         uses: baptiste0928/cargo-install@v3
@@ -161,13 +171,22 @@ jobs:
       - name: Landing unit tests
         run: pnpm --filter @agentfi/landing test
 
+      - name: Console unit tests
+        run: pnpm --filter @agentfi/console test
+
   docker-images:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build searchd image
-        run: docker build -f apps/agentrank/Dockerfile -t agentrank-searchd:ci .
+      - name: Build AgentRank image (searchd / consoled / agentbot)
+        run: docker build -f apps/agentrank/Dockerfile -t agentrank:ci .
+
+      - name: Build console UI image
+        run: |
+          docker build -f apps/console/Dockerfile \
+            --build-arg VITE_CONSOLE_API_BASE=https://consoled.example.com \
+            -t agentrank-console:ci .
 
       - name: Build landing image
         run: |

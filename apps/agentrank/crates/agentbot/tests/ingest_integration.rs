@@ -10,6 +10,13 @@ use sqlx::PgPool;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
+fn test_ingest_policy() -> agentrank_agentbot::IngestPolicy {
+    agentrank_agentbot::IngestPolicy {
+        allow_http_localhost: true,
+        allow_loopback_https: true,
+    }
+}
+
 async fn pool_with_migrations() -> PgPool {
     let db = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for integration test");
     let pool = PgPoolOptions::new()
@@ -53,9 +60,15 @@ async fn mock_agent_json_persists_agent_row() {
 
     let url = format!("http://{addr}/.well-known/agent.json");
     let client = agentrank_agentbot::http_client().expect("http client");
-    let out = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 1_048_576)
-        .await
-        .expect("ingest");
+    let out = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        1_048_576,
+        test_ingest_policy(),
+    )
+    .await
+    .expect("ingest");
 
     let row: (String, String, String, SqlxJson<serde_json::Value>) = sqlx::query_as(
         "SELECT name, endpoint_url, protocol_version, card_json FROM agents WHERE id = $1",
@@ -92,9 +105,15 @@ async fn http_404_records_crawl_history_and_fails() {
 
     let url = format!("http://{addr}/missing.json");
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 1024)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        1024,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(
         err,
         agentrank_agentbot::IngestError::HttpStatus(s) if s == reqwest::StatusCode::NOT_FOUND
@@ -126,9 +145,15 @@ async fn invalid_json_200_records_parse_error() {
 
     let url = format!("http://{addr}/bad.json");
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 1024)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        1024,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(err, agentrank_agentbot::IngestError::CardParse(_)));
 
     let row: (Option<String>,) = sqlx::query_as(
@@ -155,9 +180,15 @@ async fn oversized_body_records_body_too_large() {
 
     let url = format!("http://{addr}/huge.json");
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 400)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        400,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(
         err,
         agentrank_agentbot::IngestError::BodyTooLarge(800, 400)
@@ -202,9 +233,15 @@ async fn reingest_same_card_updates_agent_row() {
 
     let url = format!("http://{addr}/card.json");
     let client = agentrank_agentbot::http_client().unwrap();
-    let out1 = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 1024)
-        .await
-        .unwrap();
+    let out1 = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        1024,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap();
 
     let listener2 = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr2 = listener2.local_addr().unwrap();
@@ -218,9 +255,15 @@ async fn reingest_same_card_updates_agent_row() {
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let url2 = format!("http://{addr2}/card.json");
-    let out2 = agentrank_agentbot::ingest_card_url(&pool, &client, &url2, 1024)
-        .await
-        .unwrap();
+    let out2 = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url2,
+        1024,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(
         out1.agent_id, out2.agent_id,
@@ -266,9 +309,15 @@ async fn redirect_chain_three_hops_reaches_card() {
 
     let url = format!("http://{addr}/t0");
     let client = agentrank_agentbot::http_client().unwrap();
-    let out = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 4096)
-        .await
-        .unwrap();
+    let out = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        4096,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap();
     let canon: String = sqlx::query_scalar("SELECT canonical_url FROM agents WHERE id = $1")
         .bind(out.agent_id)
         .fetch_one(&pool)
@@ -307,9 +356,15 @@ async fn six_redirects_exceeds_client_policy() {
 
     let url = format!("http://{addr}/h0");
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 4096)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        4096,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     match &err {
         agentrank_agentbot::IngestError::Http(e) => {
             assert!(
@@ -325,11 +380,12 @@ async fn six_redirects_exceeds_client_policy() {
 async fn connection_refused_surfaces_http_error() {
     let pool = pool_with_migrations().await;
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
         &pool,
         &client,
         "http://127.0.0.1:20987/.well-known/agent.json",
         1024,
+        test_ingest_policy(),
     )
     .await
     .unwrap_err();
@@ -355,9 +411,15 @@ async fn https_url_against_plain_http_listener_fails() {
 
     let url = format!("https://{addr}/plain");
     let client = agentrank_agentbot::http_client().unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 1024)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        1024,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     assert!(
         matches!(err, agentrank_agentbot::IngestError::Http(_)),
         "TLS handshake to HTTP-only port should fail: {err:?}"
@@ -390,9 +452,15 @@ async fn slow_response_hits_reqwest_timeout() {
 
     let url = format!("http://{addr}/slow.json");
     let client = agentrank_agentbot::http_client_with_timeout(Duration::from_millis(200)).unwrap();
-    let err = agentrank_agentbot::ingest_card_url(&pool, &client, &url, 4096)
-        .await
-        .unwrap_err();
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
+        &pool,
+        &client,
+        &url,
+        4096,
+        test_ingest_policy(),
+    )
+    .await
+    .unwrap_err();
     match err {
         agentrank_agentbot::IngestError::Http(e) => {
             assert!(e.is_timeout(), "expected timeout, got {e}");
@@ -405,11 +473,12 @@ async fn slow_response_hits_reqwest_timeout() {
 async fn unresolvable_host_fails_without_panicking() {
     let pool = pool_with_migrations().await;
     let client = agentrank_agentbot::http_client_with_timeout(Duration::from_secs(12)).unwrap();
-    let err = agentrank_agentbot::ingest_card_url(
+    let err = agentrank_agentbot::ingest_card_url_with_policy(
         &pool,
         &client,
-        "http://agentrank-nx-7f2a.invalid./.well-known/agent.json",
+        "https://agentrank-nx-7f2a.invalid/.well-known/agent.json",
         1024,
+        test_ingest_policy(),
     )
     .await
     .unwrap_err();
@@ -446,7 +515,14 @@ async fn concurrent_ingest_same_external_id_single_agent_row() {
         let client = client.clone();
         let url = url.clone();
         handles.push(tokio::spawn(async move {
-            agentrank_agentbot::ingest_card_url(&pool, &client, &url, 8192).await
+            agentrank_agentbot::ingest_card_url_with_policy(
+                &pool,
+                &client,
+                &url,
+                8192,
+                test_ingest_policy(),
+            )
+            .await
         }));
     }
     let mut expected_ext: Option<String> = None;

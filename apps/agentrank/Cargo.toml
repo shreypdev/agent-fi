@@ -4,10 +4,13 @@ members = [
     "crates/data-plane",
     "crates/healthd",
     "crates/card",
+    "crates/crawl-policy",
     "crates/frontier",
     "crates/agentbot",
     "crates/search-index",
     "crates/searchd",
+    "crates/consoled",
+    "crates/registry-connectors",
 ]
 
 [workspace.package]

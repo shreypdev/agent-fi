@@ -1,0 +1,43 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+  background: #0f1419;
+  color: #e7e9ea;
+  line-height: 1.5;
+}
+a {
+  color: #6db3ff;
+}
+input,
+button,
+textarea {
+  font: inherit;
+}
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+.card {
+  background: #1a222c;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid #2f3b47;
+}
+.err {
+  color: #f87171;
+}
+pre {
+  overflow: auto;
+  background: #0b0f14;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}

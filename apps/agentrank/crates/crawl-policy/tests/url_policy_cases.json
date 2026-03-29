@@ -1,0 +1,10 @@
+[
+  {"url": "https://example.com/path", "expect": "ok"},
+  {"url": "http://example.com/", "expect": "scheme"},
+  {"url": "https://127.0.0.1/x", "expect": "blocked_ip"},
+  {"url": "https://10.0.0.1/", "expect": "blocked_ip"},
+  {"url": "https://169.254.169.254/", "expect": "blocked_ip"},
+  {"url": "https://user:pass@example.com/", "expect": "userinfo"},
+  {"url": "file:///etc/passwd", "expect": "scheme"},
+  {"url": "https://metadata.google.internal/", "expect": "blocked_host"}
+]

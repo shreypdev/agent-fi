@@ -1,16 +1,48 @@
 //! Fetch `/.well-known/agent.json` (or any card URL), validate, and persist to PostgreSQL.
 
+mod crawl_run;
 mod error;
+pub mod github_discover;
+mod host_rate_limit;
+pub mod metrics_srv;
 
+pub use crawl_run::{run_drain, run_loop, CrawlRunConfig};
 pub use error::IngestError;
+pub use host_rate_limit::check_host_fetch_allowed;
 
 use agentrank_card::parse_agent_card_bytes;
+use agentrank_crawl_policy::validate_outbound_url;
 use reqwest::Client;
 use sqlx::types::Json;
 use sqlx::PgPool;
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
+
+/// URL policy for fetches (SSRF mitigation). Default: HTTPS only, no localhost HTTP.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct IngestPolicy {
+    pub allow_http_localhost: bool,
+    /// When true, `https://127.0.0.1` / `https://[::1]` allowed (integration tests only).
+    pub allow_loopback_https: bool,
+}
+
+impl IngestPolicy {
+    /// `AGENTBOT_ALLOW_HTTP_LOCALHOST=1` — `http://127.0.0.1` / `localhost`.
+    /// `AGENTBOT_ALLOW_LOOPBACK_HTTPS=1` — `https://127.0.0.1` (tests).
+    pub fn from_env() -> Self {
+        let allow_http_localhost = std::env::var("AGENTBOT_ALLOW_HTTP_LOCALHOST")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let allow_loopback_https = std::env::var("AGENTBOT_ALLOW_LOOPBACK_HTTPS")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        Self {
+            allow_http_localhost,
+            allow_loopback_https,
+        }
+    }
+}
 
 /// `User-Agent` for outbound fetches (RFC 9309 style product token + URL + contact).
 pub const AGENTBOT_USER_AGENT: &str =
@@ -47,10 +79,39 @@ pub async fn ingest_card_url(
     fetch_url: &str,
     max_body_bytes: usize,
 ) -> Result<IngestSuccess, IngestError> {
+    ingest_card_url_with_policy(
+        pool,
+        client,
+        fetch_url,
+        max_body_bytes,
+        IngestPolicy::default(),
+    )
+    .await
+}
+
+/// Same as [`ingest_card_url`] with explicit URL policy (localhost HTTP for tests, etc.).
+pub async fn ingest_card_url_with_policy(
+    pool: &PgPool,
+    client: &Client,
+    fetch_url: &str,
+    max_body_bytes: usize,
+    policy: IngestPolicy,
+) -> Result<IngestSuccess, IngestError> {
     let parsed_url = Url::parse(fetch_url)?;
+    validate_outbound_url(
+        &parsed_url,
+        policy.allow_http_localhost,
+        policy.allow_loopback_https,
+    )?;
     let resp = client.get(parsed_url.clone()).send().await?;
     let status = resp.status();
     let final_url = resp.url().clone();
+    validate_outbound_url(
+        &final_url,
+        policy.allow_http_localhost,
+        policy.allow_loopback_https,
+    )
+    .map_err(|e| IngestError::PostRedirectPolicy(format!("{final_url}: {e}")))?;
     let bytes = resp.bytes().await?;
 
     if bytes.len() > max_body_bytes {

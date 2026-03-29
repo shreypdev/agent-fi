@@ -1,0 +1,18 @@
+[package]
+name = "agentrank-crawl-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "robots.txt parsing, cache TTLs, and outbound URL policy for AgentBot"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+url = "2"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+wiremock = "0.6"
