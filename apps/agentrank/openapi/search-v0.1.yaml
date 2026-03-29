@@ -1,0 +1,177 @@
+openapi: 3.0.3
+info:
+  title: AgentRank Search API
+  version: 0.1.0
+  description: |
+    Week 3 lexical search over indexed agents (Tantivy BM25).
+    Rate limit: anonymous fixed window per client IP (see `Retry-After` on 429).
+servers:
+  - url: http://localhost:8080
+    description: Local searchd
+paths:
+  /health:
+    get:
+      summary: Liveness (Postgres + Redis)
+      responses:
+        "200":
+          description: OK
+        "500":
+          description: Dependency unhealthy
+  /v1/search:
+    post:
+      summary: Keyword search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Ranked hits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Empty or whitespace query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "429":
+          description: Rate limited
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "500":
+          description: Search or database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+  /v1/agents/{id}:
+    get:
+      summary: Agent detail (includes card_json)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDetailResponse"
+        "404":
+          description: Unknown agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+components:
+  schemas:
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 10
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+    SearchResultItem:
+      type: object
+      required:
+        - agent_id
+        - name
+        - description
+        - endpoint_url
+        - protocol_version
+        - trust_tier
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        endpoint_url:
+          type: string
+        protocol_version:
+          type: string
+        trust_tier:
+          type: string
+        provider_display_name:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+          nullable: true
+    SearchResponse:
+      type: object
+      required: [results, query_time_ms]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResultItem"
+        total_hits_estimate:
+          type: integer
+          format: int64
+          nullable: true
+        query_time_ms:
+          type: integer
+          format: int64
+    AgentDetailResponse:
+      type: object
+      required:
+        - agent_id
+        - name
+        - description
+        - endpoint_url
+        - protocol_version
+        - trust_tier
+        - card_json
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        endpoint_url:
+          type: string
+        protocol_version:
+          type: string
+        trust_tier:
+          type: string
+        provider_display_name:
+          type: string
+          nullable: true
+        card_json: {}
+    ErrorBody:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

@@ -6,6 +6,8 @@ members = [
     "crates/card",
     "crates/frontier",
     "crates/agentbot",
+    "crates/search-index",
+    "crates/searchd",
 ]
 
 [workspace.package]

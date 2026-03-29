@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { CONNECT_PATH } from "../config";
+import { CONNECT_PATH, SEARCH_PATH } from "../config";
 import "./NavBar.css";
 
 export default function NavBar() {
   const location = useLocation();
   const isConnect = location.pathname === CONNECT_PATH;
+  const isSearch = location.pathname === SEARCH_PATH || location.pathname.startsWith("/agents/");
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -54,6 +55,9 @@ export default function NavBar() {
         <nav className={`navbar-links ${menuOpen ? "open" : ""}`} aria-label="Main">
           <Link to="/#what-we-build">What we build</Link>
           <Link to="/#roadmap">Roadmap</Link>
+          <Link to={SEARCH_PATH} className={isSearch ? "active" : undefined}>
+            Agents
+          </Link>
           <Link to="/#contact">Contact</Link>
           <Link
             to={CONNECT_PATH}

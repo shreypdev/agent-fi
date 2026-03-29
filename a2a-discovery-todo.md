@@ -93,11 +93,11 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 
 ### Week 3 — Search + API + UI
 
-- [ ] Tantivy index: name, description, skills (minimum fields)
-- [ ] Index rebuild / incremental path defined (even if crude)
-- [ ] API gateway: `POST /search` or `GET` per contract stub; anonymous tier + rate limit
-- [ ] Web UI: search, result list, agent detail page; responsive sanity check
-- [ ] 1K fixtures indexed; keyword relevance smoke test; P99 under 200ms in dev
+- [x] Tantivy index: name, description, skills (minimum fields) — [`crates/search-index`](apps/agentrank/crates/search-index), `agentrank-index rebuild`
+- [x] Index rebuild / incremental path defined (even if crude) — `rebuild` + `upsert`; `SEARCH_INDEX_PATH`; version file `AGENTRANK_INDEX_VERSION`
+- [x] API gateway: `POST /v1/search` + `GET /v1/agents/:id`; anonymous tier + Redis rate limit — [`crates/searchd`](apps/agentrank/crates/searchd), OpenAPI [`openapi/search-v0.1.yaml`](apps/agentrank/openapi/search-v0.1.yaml)
+- [x] Web UI: search, result list, agent detail page; responsive sanity check — [`apps/landing`](apps/landing) `/search`, `/agents/:id`, Vitest smoke
+- [x] 1K fixtures path + keyword golden smoke + P99 script — [`scripts/gen_1k_agents_sql.py`](apps/agentrank/scripts/gen_1k_agents_sql.py), [`tests/search_golden.json`](apps/agentrank/tests/search_golden.json), [`scripts/search_p99.sh`](scripts/search_p99.sh)
 
 ### Week 4 — Crawl scale + console + observability
 

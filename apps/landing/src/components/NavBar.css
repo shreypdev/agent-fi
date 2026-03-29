@@ -100,6 +100,10 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.navbar-links a.active {
+  color: var(--accent);
+}
+
 .navbar-cta {
   padding: 12px 28px !important;
   min-height: 44px;

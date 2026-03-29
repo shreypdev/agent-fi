@@ -68,6 +68,11 @@ jobs:
       - name: cargo build agentbot
         run: cargo build -p agentrank-agentbot
 
+      - name: cargo build search stack
+        run: |
+          cargo build -p agentrank-searchd
+          cargo build -p agentrank-search-index --bin agentrank-index
+
       - name: Install sqlx-cli
         uses: baptiste0928/cargo-install@v3
         with:
@@ -80,6 +85,34 @@ jobs:
 
       - name: Run healthd
         run: cargo run -p agentrank-healthd --bin healthd
+
+      - name: Rebuild search index and smoke searchd
+        run: |
+          set -e
+          export SEARCH_INDEX_PATH="${{ runner.temp }}/search_index"
+          cargo run -p agentrank-search-index --bin agentrank-index -- rebuild --output "$SEARCH_INDEX_PATH"
+          ./target/debug/searchd &
+          SPID=$!
+          cleanup() {
+            kill "$SPID" 2>/dev/null || true
+            wait "$SPID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -sf "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" != 1 ]; then
+            echo "searchd failed to become healthy on :8080"
+            exit 1
+          fi
+          curl -sf -X POST "http://127.0.0.1:8080/v1/search" \
+            -H "content-type: application/json" \
+            -d '{"query":"demo","limit":5}' | jq -e '.results | type == "array"' >/dev/null
 
   python-ml:
     runs-on: ubuntu-latest
@@ -120,7 +153,10 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Turbo lint, build, typecheck
         run: pnpm exec turbo run lint build typecheck
+
+      - name: Landing unit tests
+        run: pnpm --filter @agentfi/landing test

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
-import { CONNECT_PATH } from "./config";
+import { AGENT_DETAIL_PATH, CONNECT_PATH, SEARCH_PATH } from "./config";
 import NavBar from "./components/NavBar";
 import IntroOverlay from "./components/IntroOverlay";
 import HomePage from "./pages/HomePage";
 import ConnectPage from "./pages/ConnectPage";
+import SearchPage from "./pages/SearchPage";
+import AgentDetailPage from "./pages/AgentDetailPage";
 import "./App.css";
 
 function DocumentTitle() {
@@ -53,6 +55,8 @@ export default function App() {
       <NavBar />
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path={SEARCH_PATH} element={<SearchPage />} />
+        <Route path={AGENT_DETAIL_PATH} element={<AgentDetailPage />} />
         <Route path={CONNECT_PATH} element={<ConnectPage />} />
       </Routes>
     </>

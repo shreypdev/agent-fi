@@ -76,6 +76,28 @@ Remove volumes (wipes DB data):
 docker compose -f apps/dev/docker-compose.yml down -v
 ```
 
+## `searchd` (Week 3)
+
+Compose includes **`searchd`** on host port **8090**. The Tantivy index is a **bind mount** at `apps/agentrank/.local-search-index` → `/data/index` inside the container.
+
+1. Start Postgres + Redis: `docker compose -f apps/dev/docker-compose.yml up -d postgres redis`
+2. Migrate and build the index (from host, talking to Compose Postgres on **5433**):
+
+   ```bash
+   cd apps/agentrank
+   export DATABASE_URL=postgresql://agentrank:agentrank@127.0.0.1:5433/agentrank
+   sqlx migrate run --source migrations
+   mkdir -p .local-search-index
+   export SEARCH_INDEX_PATH="$PWD/.local-search-index"
+   cargo run -p agentrank-search-index --bin agentrank-index -- rebuild --output "$SEARCH_INDEX_PATH"
+   ```
+
+3. Start searchd: `docker compose -f apps/dev/docker-compose.yml up -d searchd` (from repo root).
+
+`GET http://127.0.0.1:8090/health` and `POST http://127.0.0.1:8090/v1/search` with JSON body `{"query":"demo","limit":5}` should work after the demo seed migration.
+
+The **production** image ([`apps/agentrank/Dockerfile`](../agentrank/Dockerfile)) uses an **entrypoint** that runs `sqlx migrate`, `agentrank-index rebuild`, then `searchd` (see [`docker/entrypoint-searchd.sh`](../agentrank/docker/entrypoint-searchd.sh)). Local Compose uses a plain `searchd` binary mount instead so you control migrate/rebuild from the host.
+
 ## CI parity
 
 GitHub Actions runs PostgreSQL and Redis as **service containers** on **5432** / **6379** on the runner (no host conflict). Locally, Compose maps Postgres to host **5433** instead; credentials and DB name still match CI.

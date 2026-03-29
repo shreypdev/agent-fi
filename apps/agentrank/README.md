@@ -48,6 +48,8 @@ sqlx migrate run --source migrations
 | Frontier | `cargo test -p agentrank-frontier` | **`REDIS_URL`** (tests no-op early if unset; CI sets it) |
 | Data plane | `cargo test -p agentrank-data-plane` | Dead-port Redis test does not need a server; live check tests optional |
 | AgentBot integration | `cargo test -p agentrank-agentbot --test ingest_integration` | **`DATABASE_URL`** + migrations; uses local HTTP servers (no external network except DNS test below) |
+| Search index | `cargo test -p agentrank-search-index` | None (Tantivy temp dirs); golden + integration |
+| Search API | `cargo test -p agentrank-searchd` | **`DATABASE_URL`** + **`REDIS_URL`** + migrations (`live_search` tests) |
 | Full workspace | `cargo test --workspace` | **`DATABASE_URL`** + **`REDIS_URL`** for full coverage |
 
 Integration tests cover: happy ingest, HTTP 404 / bad JSON / oversized body, **3-hop redirects**, **policy limit on redirects** (6 hops), **connection refused**, **HTTPS to plain-HTTP** (TLS failure class), **client timeout** vs slow server, **`.invalid` DNS failure**, **32 concurrent ingests** same `external_id` (single `agents` row, many `crawl_history` rows), re-ingest upsert.
@@ -116,6 +118,43 @@ cargo run -p agentrank-agentbot --bin agentbot -- enqueue 'https://example.com/.
 cargo run -p agentrank-agentbot --bin agentbot -- run-once
 ```
 
+## Week 3 — Search index + `searchd` API
+
+**Index (`agentrank-search-index`):** Tantivy over `agents.name`, `agents.description`, and a deterministic **skills blob** from `card_json.skills` (per-skill: `name`, `tags`, `description`, `examples` — see `crates/search-index/src/extract.rs`). Max ~50k Unicode scalars per text field (stable truncation). Field boosts (frozen): name > skills > description (`crates/search-index/src/schema.rs`).
+
+**Lifecycle:**
+
+```bash
+export SEARCH_INDEX_PATH=/path/to/index/dir   # must be writable
+cargo run -p agentrank-search-index --bin agentrank-index -- rebuild --output "$SEARCH_INDEX_PATH"
+cargo run -p agentrank-search-index --bin agentrank-index -- upsert --index "$SEARCH_INDEX_PATH" --agent-id '<uuid>'
+```
+
+**HTTP API (`searchd`):** `GET /health`, `POST /v1/search`, `GET /v1/agents/:id`. Contract: [`openapi/search-v0.1.yaml`](./openapi/search-v0.1.yaml).
+
+```bash
+export DATABASE_URL=...
+export REDIS_URL=...
+export SEARCH_INDEX_PATH=...
+export PORT=8080   # Railway sets this automatically
+cargo run -p agentrank-searchd --bin searchd
+```
+
+**Rate limit:** Redis fixed window 60s per client IP (`X-Forwarded-For` first hop, else `X-Real-IP`, else `127.0.0.1`). Cap: `SEARCH_RATE_LIMIT_PER_MINUTE` (default `120`). Returns `429` + `Retry-After: 60`. **Trust boundary:** if `searchd` is exposed without a proxy that overwrites `X-Forwarded-For`, clients can spoof IPs; keep the service behind Railway’s edge (or strip/forbid that header at your proxy) for meaningful per-IP limits.
+
+**CORS:** `CORS_ORIGINS` comma-separated list; if unset, any origin is allowed (demo-friendly; tighten for production).
+
+**Demo seed:** Migration `20260328200000_demo_seed_agents.sql` inserts two idempotent catalog rows (`ON CONFLICT (external_id) DO NOTHING`), including a card pointing at the public demo agent URL.
+
+**Load / perf (local):**
+
+- Generate bulk SQL: `python3 scripts/gen_1k_agents_sql.py --count 1000 > /tmp/seed.sql` then `psql "$DATABASE_URL" -f /tmp/seed.sql`, rebuild index.
+- Latency smoke: [`../../scripts/search_p99.sh`](../../scripts/search_p99.sh) (expects `SEARCHD_URL`, default `http://127.0.0.1:8080`). Target: **P99 &lt; 200ms** on reference hardware with a warm index (not enforced in CI).
+
+**Docker:** [`Dockerfile`](./Dockerfile) — `docker build -f apps/agentrank/Dockerfile -t searchd .` from repo root. Compose adds a `searchd` service in [`../dev/docker-compose.yml`](../dev/docker-compose.yml); **build the index into the volume first** (see dev README).
+
+**Deferred (not Week 3):** hybrid vectors / Qdrant, rich `POST /v1/search` filters from opus §16, explain payloads, AVERT, Prometheus (Week 4+).
+
 ## Crates
 
 | Crate                 | Role                                                |
@@ -125,6 +164,8 @@ cargo run -p agentrank-agentbot --bin agentbot -- run-once
 | `agentrank-card`       | Agent Card parse, validate, normalize (`ParsedAgentCard`) |
 | `agentrank-frontier`   | Redis ZSET URL queue: enqueue / dequeue / dedup     |
 | `agentrank-agentbot`   | Library + `agentbot` binary: HTTP ingest + DB writes |
+| `agentrank-search-index` | Tantivy schema, indexer CLI `agentrank-index`     |
+| `agentrank-searchd`    | Axum `searchd` binary                              |
 
 ## Schema v1
 

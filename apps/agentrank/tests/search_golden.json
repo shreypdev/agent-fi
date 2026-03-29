@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "query": "acme portfolio",
+      "expect_top": "aaaaaaaa-aaaa-5aaa-8aaa-aaaaaaaaaaaa"
+    },
+    {
+      "query": "cooking pasta",
+      "expect_top": "bbbbbbbb-bbbb-5bbb-8bbb-bbbbbbbbbbbb"
+    },
+    {
+      "query": "kubernetes deploy",
+      "expect_top": "cccccccc-cccc-5ccc-8ccc-cccccccccccc"
+    }
+  ]
+}

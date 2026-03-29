@@ -11,3 +11,8 @@ export const PUBLIC_AGENT_URL =
   (import.meta.env.DEV ? LOCAL_AGENT_URL : PRODUCTION_AGENT_URL);
 
 export const CONNECT_PATH = "/connect";
+
+export const SEARCH_PATH = "/search";
+
+/** React Router pattern for agent detail (id param). */
+export const AGENT_DETAIL_PATH = "/agents/:id";
