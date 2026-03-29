@@ -30,7 +30,7 @@ ENV VITE_PUBLIC_AGENT_URL=$VITE_PUBLIC_AGENT_URL
 RUN pnpm --filter @agentfi/landing run build
 
 FROM nginx:1.27-alpine AS runner
-COPY apps/landing/docker/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY --from=builder /repo/apps/landing/docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY --from=builder /repo/apps/landing/dist /usr/share/nginx/html
 ENV PORT=3000
 EXPOSE 3000

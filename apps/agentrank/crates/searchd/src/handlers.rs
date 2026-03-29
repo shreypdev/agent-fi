@@ -72,26 +72,24 @@ pub async fn ready(State(state): State<AppState>) -> Result<StatusCode, ApiError
         })?;
 
     let path = state.index_path.clone();
-    tokio::task::spawn_blocking(move || {
-        agentrank_search_index::store::probe_index_readable(&path)
-    })
-    .await
-    .map_err(|e| ApiError {
-        status: StatusCode::SERVICE_UNAVAILABLE,
-        body: ErrorBody {
-            error: "not_ready",
-            message: format!("index probe join: {e}"),
-        },
-        retry_after_secs: None,
-    })?
-    .map_err(|e| ApiError {
-        status: StatusCode::SERVICE_UNAVAILABLE,
-        body: ErrorBody {
-            error: "not_ready",
-            message: format!("index: {e}"),
-        },
-        retry_after_secs: None,
-    })?;
+    tokio::task::spawn_blocking(move || agentrank_search_index::store::probe_index_readable(&path))
+        .await
+        .map_err(|e| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            body: ErrorBody {
+                error: "not_ready",
+                message: format!("index probe join: {e}"),
+            },
+            retry_after_secs: None,
+        })?
+        .map_err(|e| ApiError {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            body: ErrorBody {
+                error: "not_ready",
+                message: format!("index: {e}"),
+            },
+            retry_after_secs: None,
+        })?;
 
     Ok(StatusCode::OK)
 }
