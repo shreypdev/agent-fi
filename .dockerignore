@@ -1,0 +1,12 @@
+# Faster / smaller image builds (monorepo)
+**/node_modules
+**/.turbo
+**/dist
+.git
+.github
+**/*.md
+**/target
+**/.venv
+**/__pycache__
+apps/ml-pipeline
+apps/internal-demo

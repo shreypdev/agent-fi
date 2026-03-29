@@ -130,7 +130,7 @@ cargo run -p agentrank-search-index --bin agentrank-index -- rebuild --output "$
 cargo run -p agentrank-search-index --bin agentrank-index -- upsert --index "$SEARCH_INDEX_PATH" --agent-id '<uuid>'
 ```
 
-**HTTP API (`searchd`):** `GET /health`, `POST /v1/search`, `GET /v1/agents/:id`. Contract: [`openapi/search-v0.1.yaml`](./openapi/search-v0.1.yaml).
+**HTTP API (`searchd`):** `GET /health` (liveness), **`GET /ready`** (readiness: Postgres + Redis + index), `GET /metrics` (Prometheus), `POST /v1/search`, `GET /v1/agents/:id`. Contract: [`openapi/search-v0.1.yaml`](./openapi/search-v0.1.yaml).
 
 ```bash
 export DATABASE_URL=...
@@ -140,9 +140,11 @@ export PORT=8080   # Railway sets this automatically
 cargo run -p agentrank-searchd --bin searchd
 ```
 
-**Rate limit:** Redis fixed window 60s per client IP (`X-Forwarded-For` first hop, else `X-Real-IP`, else `127.0.0.1`). Cap: `SEARCH_RATE_LIMIT_PER_MINUTE` (default `120`). Returns `429` + `Retry-After: 60`. **Trust boundary:** if `searchd` is exposed without a proxy that overwrites `X-Forwarded-For`, clients can spoof IPs; keep the service behind Railway’s edge (or strip/forbid that header at your proxy) for meaningful per-IP limits.
+**Rate limit:** Redis fixed window 60s per client IP. **Railway:** `X-Forwarded-For` / `X-Real-IP` are trusted by default (`RAILWAY_*` env present). **`TRUST_PROXY_HEADERS=0`** forces TCP peer only; **`=1`** forces header trust off-Railway. Cap: `SEARCH_RATE_LIMIT_PER_MINUTE` (default `120`). Returns `429` + `Retry-After: 60`.
 
-**CORS:** `CORS_ORIGINS` comma-separated list; if unset, any origin is allowed (demo-friendly; tighten for production).
+**CORS:** `CORS_ORIGINS` comma-separated list; if unset, any origin is allowed (demo-friendly). Set **`CORS_REQUIRE_ORIGINS=1`** in production so startup fails without explicit origins.
+
+**Index CLI:** `agentrank-index probe --output "$SEARCH_INDEX_PATH"` verifies the on-disk index (used by Docker entrypoint when `SEARCHD_INDEX_BOOT=reuse`). See [`RAILWAY.md`](./RAILWAY.md) for volumes and multi-replica notes.
 
 **Demo seed:** Migration `20260328200000_demo_seed_agents.sql` inserts two idempotent catalog rows (`ON CONFLICT (external_id) DO NOTHING`), including a card pointing at the public demo agent URL.
 
@@ -153,7 +155,7 @@ cargo run -p agentrank-searchd --bin searchd
 
 **Docker:** [`Dockerfile`](./Dockerfile) — `docker build -f apps/agentrank/Dockerfile -t searchd .` from repo root. Compose adds a `searchd` service in [`../dev/docker-compose.yml`](../dev/docker-compose.yml); **build the index into the volume first** (see dev README).
 
-**Deferred (not Week 3):** hybrid vectors / Qdrant, rich `POST /v1/search` filters from opus §16, explain payloads, AVERT, Prometheus (Week 4+).
+**Deferred (not Week 3):** hybrid vectors / Qdrant, rich `POST /v1/search` filters from opus §16, explain payloads, AVERT, Grafana/SLO dashboards (Week 4+). **agentbot** outbound fetch policy (SSRF hardening: allowlists, private-IP blocks) remains future work; search itself does not fetch user URLs.
 
 ## Crates
 

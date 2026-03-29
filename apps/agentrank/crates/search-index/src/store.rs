@@ -31,6 +31,14 @@ fn read_version_file(dir: &Path) -> Result<String, IndexError> {
     Ok(s.trim().to_string())
 }
 
+/// Verify the index directory is readable (version file, Tantivy open, reader reload).
+pub fn probe_index_readable(path: &Path) -> Result<(), IndexError> {
+    let (index, _ag) = open_index(path)?;
+    let reader = index.reader().map_err(IndexError::Tantivy)?;
+    reader.reload().map_err(IndexError::Tantivy)?;
+    Ok(())
+}
+
 /// Ensure index dir exists and version matches; open index.
 pub fn open_index(path: &Path) -> Result<(Index, AgentSchema), IndexError> {
     if !path.is_dir() {

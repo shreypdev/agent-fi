@@ -1,7 +1,7 @@
 //! Search HTTP API — bind `PORT` (default 8080), env: `DATABASE_URL`, `REDIS_URL`, `SEARCH_INDEX_PATH`.
 
 use agentrank_data_plane::database_url;
-use agentrank_searchd::{build_app, serve};
+use agentrank_searchd::{build_app, init_metrics, serve};
 use anyhow::Context;
 use sqlx::postgres::PgPoolOptions;
 use std::path::PathBuf;
@@ -26,6 +26,8 @@ async fn main() -> anyhow::Result<()> {
         .connect(&db)
         .await
         .context("postgres connect")?;
+
+    init_metrics().context("init_metrics")?;
 
     let router = build_app(pool, &redis_url, &index_path)
         .await

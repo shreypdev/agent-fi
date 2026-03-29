@@ -1,0 +1,7 @@
+# searchd — Railway config-as-code: build from Rust Docker image (migrations + index + API).
+# Service root directory = repository root `.`.
+# Set config path to `apps/agentrank/railway.toml` in Railway if needed.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/agentrank/Dockerfile"

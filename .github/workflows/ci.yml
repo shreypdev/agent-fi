@@ -100,14 +100,14 @@ jobs:
           trap cleanup EXIT
           ok=0
           for i in $(seq 1 30); do
-            if curl -sf "http://127.0.0.1:8080/health" >/dev/null 2>&1; then
+            if curl -sf "http://127.0.0.1:8080/ready" >/dev/null 2>&1; then
               ok=1
               break
             fi
             sleep 1
           done
           if [ "$ok" != 1 ]; then
-            echo "searchd failed to become healthy on :8080"
+            echo "searchd failed to become ready on :8080"
             exit 1
           fi
           curl -sf -X POST "http://127.0.0.1:8080/v1/search" \
@@ -160,3 +160,18 @@ jobs:
 
       - name: Landing unit tests
         run: pnpm --filter @agentfi/landing test
+
+  docker-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build searchd image
+        run: docker build -f apps/agentrank/Dockerfile -t agentrank-searchd:ci .
+
+      - name: Build landing image
+        run: |
+          docker build -f apps/landing/Dockerfile \
+            --build-arg VITE_SEARCH_API_BASE_URL=https://example.com \
+            --build-arg VITE_PUBLIC_AGENT_URL=https://example.com \
+            -t pronox-landing:ci .

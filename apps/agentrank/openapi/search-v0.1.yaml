@@ -11,12 +11,41 @@ servers:
 paths:
   /health:
     get:
-      summary: Liveness (Postgres + Redis)
+      summary: Liveness (process only)
+      description: Returns 200 if the HTTP server is up. Does not check Postgres, Redis, or the search index.
       responses:
         "200":
           description: OK
-        "500":
-          description: Dependency unhealthy
+  /ready:
+    get:
+      summary: Readiness (Postgres + Redis + Tantivy index)
+      description: Use for load balancer / orchestrator readiness probes before sending traffic.
+      responses:
+        "200":
+          description: All dependencies and index probe OK
+        "503":
+          description: Postgres, Redis, or index not usable (Service Unavailable for load balancers)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      description: |
+        OpenMetrics/Prometheus text exposition. If `METRICS_BEARER_TOKEN` is set, send
+        `Authorization: Bearer <token>` (otherwise the endpoint stays open for local/demo use).
+      responses:
+        "200":
+          description: Metrics text
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          description: Bearer token required or wrong (when METRICS_BEARER_TOKEN is set)
+        "503":
+          description: Metrics recorder not initialized
   /v1/search:
     post:
       summary: Keyword search

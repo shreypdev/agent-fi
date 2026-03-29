@@ -1,5 +1,10 @@
-[build]
-buildCommand = "npm install && npm run build"
+# Landing service — use this file as Railway "Config as code" for the Landing service
+# (Service root directory = repository root `.` so the Dockerfile can see pnpm-lock.yaml).
+# In Railway: Settings → set config path to `apps/landing/railway.toml` if not auto-detected.
+#
+# Forces Docker + pnpm (see apps/landing/Dockerfile). Do not use Railpack/npm here — root
+# package-lock.json is not maintained for npm ci.
 
-[deploy]
-startCommand = "npx serve dist -s -l $PORT"
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/landing/Dockerfile"

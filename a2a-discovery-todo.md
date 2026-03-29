@@ -102,7 +102,8 @@ Companion to [`a2a-discovery-opus.md`](./a2a-discovery-opus.md) (architecture + 
 ### Week 4 — Crawl scale + console + observability
 
 - [ ] AgentBot v0.2: frontier consumer, per-host rate limits, `robots.txt` respect
-- [ ] SSRF / fetch policy documented and tested
+- [ ] SSRF / fetch policy documented and tested (searchd does not fetch user URLs; **agentbot** ingest is the surface — see `apps/agentrank/README.md`)
+- [x] searchd Prometheus `/metrics` + HTTP counters/histograms (Grafana/SLOs optional)
 - [ ] Agent Search Console v0.1: domain claim path, card inspector, crawl history
 - [ ] Prometheus metrics per service; Grafana dashboards; one alert wired end-to-end
 - [ ] **Phase 0 gate:** seed → crawl → parse → index → search → UI (100 real URLs, no policy violations)

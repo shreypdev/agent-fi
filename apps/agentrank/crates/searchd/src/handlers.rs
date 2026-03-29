@@ -3,47 +3,59 @@ use crate::models::{SearchRequest, SearchResponse, SearchResultItem, MAX_LIMIT};
 use crate::rate_limit::check_search_rate_limit;
 use crate::AppState;
 use agentrank_search_index::search::search_agents;
+use axum::extract::connect_info::ConnectInfo;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use sqlx::FromRow;
+use std::net::SocketAddr;
 use std::time::Instant;
 use uuid::Uuid;
 
-/// Client identity for rate limiting: `X-Forwarded-For` (first hop), then `X-Real-IP`, else loopback.
-fn client_ip(headers: &HeaderMap) -> String {
-    if let Some(xff) = headers
-        .get("x-forwarded-for")
-        .or_else(|| headers.get("X-Forwarded-For"))
-        .and_then(|v| v.to_str().ok())
-    {
-        if let Some(first) = xff.split(',').next() {
-            let t = first.trim();
+/// Client identity for rate limiting when `TRUST_PROXY_HEADERS` is set: first hop of
+/// `X-Forwarded-For`, then `X-Real-IP`, else the TCP peer address.
+/// When proxy headers are not trusted, only the TCP peer is used.
+fn client_ip(headers: &HeaderMap, peer: &SocketAddr, trust_proxy_headers: bool) -> String {
+    if trust_proxy_headers {
+        if let Some(xff) = headers
+            .get("x-forwarded-for")
+            .or_else(|| headers.get("X-Forwarded-For"))
+            .and_then(|v| v.to_str().ok())
+        {
+            if let Some(first) = xff.split(',').next() {
+                let t = first.trim();
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+        }
+        if let Some(xr) = headers
+            .get("x-real-ip")
+            .or_else(|| headers.get("X-Real-IP"))
+            .and_then(|v| v.to_str().ok())
+        {
+            let t = xr.trim();
             if !t.is_empty() {
                 return t.to_string();
             }
         }
     }
-    if let Some(xr) = headers
-        .get("x-real-ip")
-        .or_else(|| headers.get("X-Real-IP"))
-        .and_then(|v| v.to_str().ok())
-    {
-        let t = xr.trim();
-        if !t.is_empty() {
-            return t.to_string();
-        }
-    }
-    "127.0.0.1".to_string()
+    peer.ip().to_string()
 }
 
-pub async fn health(State(state): State<AppState>) -> Result<StatusCode, ApiError> {
+/// Liveness: process is accepting HTTP (no dependency checks).
+pub async fn health() -> StatusCode {
+    StatusCode::OK
+}
+
+/// Readiness: Postgres, Redis, and Tantivy index on disk are usable.
+pub async fn ready(State(state): State<AppState>) -> Result<StatusCode, ApiError> {
     agentrank_data_plane::check_postgres(&state.pool)
         .await
         .map_err(|e| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+            status: StatusCode::SERVICE_UNAVAILABLE,
             body: ErrorBody {
-                error: "unhealthy",
+                error: "not_ready",
                 message: format!("postgres: {e}"),
             },
             retry_after_secs: None,
@@ -51,13 +63,36 @@ pub async fn health(State(state): State<AppState>) -> Result<StatusCode, ApiErro
     agentrank_data_plane::check_redis(&state.redis_url)
         .await
         .map_err(|e| ApiError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
+            status: StatusCode::SERVICE_UNAVAILABLE,
             body: ErrorBody {
-                error: "unhealthy",
+                error: "not_ready",
                 message: format!("redis: {e}"),
             },
             retry_after_secs: None,
         })?;
+
+    let path = state.index_path.clone();
+    tokio::task::spawn_blocking(move || {
+        agentrank_search_index::store::probe_index_readable(&path)
+    })
+    .await
+    .map_err(|e| ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        body: ErrorBody {
+            error: "not_ready",
+            message: format!("index probe join: {e}"),
+        },
+        retry_after_secs: None,
+    })?
+    .map_err(|e| ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        body: ErrorBody {
+            error: "not_ready",
+            message: format!("index: {e}"),
+        },
+        retry_after_secs: None,
+    })?;
+
     Ok(StatusCode::OK)
 }
 
@@ -89,6 +124,7 @@ WHERE a.id = ANY($1)
 
 pub async fn search(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(req): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, ApiError> {
@@ -107,7 +143,7 @@ pub async fn search(
     let limit = req.limit.clamp(1, MAX_LIMIT);
     let offset = req.offset;
 
-    let ip = client_ip(&headers);
+    let ip = client_ip(&headers, &peer, state.trust_proxy_headers);
     let mut redis = state.redis.clone();
     let allowed = check_search_rate_limit(&mut redis, &ip, state.rate_limit_per_minute)
         .await

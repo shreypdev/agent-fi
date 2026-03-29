@@ -94,9 +94,9 @@ Compose includes **`searchd`** on host port **8090**. The Tantivy index is a **b
 
 3. Start searchd: `docker compose -f apps/dev/docker-compose.yml up -d searchd` (from repo root).
 
-`GET http://127.0.0.1:8090/health` and `POST http://127.0.0.1:8090/v1/search` with JSON body `{"query":"demo","limit":5}` should work after the demo seed migration.
+`GET http://127.0.0.1:8090/health` (liveness), `GET http://127.0.0.1:8090/ready` (readiness: DB + Redis + index), and `POST http://127.0.0.1:8090/v1/search` with JSON body `{"query":"demo","limit":5}` should work after the demo seed migration.
 
-The **production** image ([`apps/agentrank/Dockerfile`](../agentrank/Dockerfile)) uses an **entrypoint** that runs `sqlx migrate`, `agentrank-index rebuild`, then `searchd` (see [`docker/entrypoint-searchd.sh`](../agentrank/docker/entrypoint-searchd.sh)). Local Compose uses a plain `searchd` binary mount instead so you control migrate/rebuild from the host.
+The **production** image ([`apps/agentrank/Dockerfile`](../agentrank/Dockerfile)) uses an **entrypoint** that runs `sqlx migrate`, index boot (`rebuild` or `reuse` via `SEARCHD_INDEX_BOOT`), then `searchd` (see [`docker/entrypoint-searchd.sh`](../agentrank/docker/entrypoint-searchd.sh)). Local Compose uses a plain `searchd` binary mount instead so you control migrate/rebuild from the host.
 
 ## CI parity
 

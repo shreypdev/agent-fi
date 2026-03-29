@@ -1,10 +1,13 @@
 //! Full-stack smoke: Postgres + Redis + Tantivy + Axum (requires `DATABASE_URL`, `REDIS_URL`).
 
+use agentrank_search_index::schema::VERSION_FILENAME;
 use agentrank_search_index::store::rebuild_index;
-use agentrank_searchd::build_app;
+use agentrank_searchd::{build_app, init_metrics};
 use axum::body::Body;
+use axum::extract::connect_info::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use std::net::SocketAddr;
 use serde_json::json;
 use sqlx::migrate::Migrator;
 use sqlx::PgPool;
@@ -33,6 +36,8 @@ async fn search_empty_query_400_and_health_ok() {
     let index_path = dir.path();
     rebuild_index(&pool, index_path).await.expect("rebuild");
 
+    init_metrics().expect("init_metrics");
+
     let app = build_app(pool.clone(), &redis_url, index_path)
         .await
         .expect("build");
@@ -53,14 +58,23 @@ async fn search_empty_query_400_and_health_ok() {
         .clone()
         .oneshot(
             Request::builder()
-                .method("POST")
-                .uri("/v1/search")
-                .header("content-type", "application/json")
-                .body(Body::from(r#"{"query":"   ","limit":5}"#))
+                .uri("/ready")
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/v1/search")
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"query":"   ","limit":5}"#))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
+    let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
@@ -112,23 +126,22 @@ async fn search_finds_inserted_agent() {
     let index_path = dir.path();
     rebuild_index(&pool, index_path).await.expect("rebuild");
 
+    init_metrics().expect("init_metrics");
+
     let app = build_app(pool, &redis_url, index_path)
         .await
         .expect("build");
 
     let body = json!({"query": "zebra alpha", "limit": 10}).to_string();
-    let res = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/search")
-                .header("content-type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/v1/search")
+        .header("content-type", "application/json")
+        .body(Body::from(body))
         .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1235))));
+    let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
@@ -150,4 +163,48 @@ async fn search_finds_inserted_agent() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn ready_fails_when_index_marker_removed() {
+    let Ok(db_url) = std::env::var("DATABASE_URL") else {
+        eprintln!("skip: DATABASE_URL");
+        return;
+    };
+    let Ok(redis_url) = std::env::var("REDIS_URL") else {
+        eprintln!("skip: REDIS_URL");
+        return;
+    };
+
+    let pool = PgPool::connect(&db_url).await.expect("pg");
+    let mpath = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations");
+    Migrator::new(mpath)
+        .await
+        .expect("migrator")
+        .run(&pool)
+        .await
+        .expect("migrate");
+
+    let dir = tempdir().unwrap();
+    let index_path = dir.path();
+    rebuild_index(&pool, index_path).await.expect("rebuild");
+
+    init_metrics().expect("init_metrics");
+
+    let app = build_app(pool, &redis_url, index_path)
+        .await
+        .expect("build");
+
+    std::fs::remove_file(index_path.join(VERSION_FILENAME)).expect("remove version file");
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
